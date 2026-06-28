@@ -1,0 +1,178 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net - deny all by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'google.com');
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Project permission helpers
+    function isProjectCreator(projectId) {
+      return exists(/databases/$(database)/documents/projects/$(projectId)) && 
+        get(/databases/$(database)/documents/projects/$(projectId)).data.createdBy == request.auth.uid;
+    }
+
+    function isProjectMember(projectId, uid) {
+      return exists(/databases/$(database)/documents/projects/$(projectId)/members/$(uid));
+    }
+
+    function getProjectMemberRole(projectId, uid) {
+      return get(/databases/$(database)/documents/projects/$(projectId)/members/$(uid)).data.role;
+    }
+
+    function isProjectAdmin(projectId) {
+      return isSignedIn() && (isProjectCreator(projectId) || (isProjectMember(projectId, request.auth.uid) && getProjectMemberRole(projectId, request.auth.uid) == 'admin'));
+    }
+
+    function isProjectEditor(projectId) {
+      return isSignedIn() && (isProjectAdmin(projectId) || (isProjectMember(projectId, request.auth.uid) && getProjectMemberRole(projectId, request.auth.uid) == 'edit'));
+    }
+
+    function isProjectViewer(projectId) {
+      return isSignedIn() && (isProjectEditor(projectId) || (isProjectMember(projectId, request.auth.uid) && getProjectMemberRole(projectId, request.auth.uid) == 'view'));
+    }
+
+    // Share link validation helpers
+    function isValidShareLink(token, projectId) {
+      return exists(/databases/$(database)/documents/shareLinks/$(token)) &&
+        get(/databases/$(database)/documents/shareLinks/$(token)).data.projectId == projectId &&
+        (get(/databases/$(database)/documents/shareLinks/$(token)).data.expiresAt == null ||
+         get(/databases/$(database)/documents/shareLinks/$(token)).data.expiresAt > request.time);
+    }
+
+    function isValidEditShareLink(token, projectId) {
+      return isValidShareLink(token, projectId) &&
+        get(/databases/$(database)/documents/shareLinks/$(token)).data.accessLevel == 'edit';
+    }
+
+    // 1. Projects Collection
+    match /projects/{projectId} {
+      allow get: if true; // Allow direct get for project sharing/viewing, list is restricted
+      allow list: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isProjectMember(projectId, request.auth.uid));
+      
+      function isValidProject(data) {
+        return data.projectName is string && data.projectName.size() >= 1 && data.projectName.size() <= 255 &&
+               data.createdBy == request.auth.uid &&
+               (data.createdAt == request.time || data.createdAt is timestamp) &&
+               (!('description' in data) || data.description is string);
+      }
+
+      allow create: if isSignedIn() && isValidId(projectId) && isValidProject(incoming());
+      allow update: if isSignedIn() && isProjectAdmin(projectId) && 
+                      incoming().projectName is string && incoming().projectName.size() >= 1 &&
+                      incoming().createdBy == existing().createdBy &&
+                      (incoming().createdAt == existing().createdAt || incoming().createdAt is timestamp);
+      allow delete: if isSignedIn() && isProjectCreator(projectId);
+
+      // Subcollection: Drawings
+      match /drawings/{drawingId} {
+        allow get: if true;
+        allow list: if true;
+
+        function isValidDrawing(data) {
+          return data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 255 &&
+                 data.url is string && data.url.size() >= 1 && data.url.size() <= 2048 &&
+                 (data.uploadedAt == request.time || data.uploadedAt is timestamp);
+        }
+
+        allow create: if isSignedIn() && isValidId(drawingId) && isProjectEditor(projectId) && isValidDrawing(incoming());
+        allow update: if isSignedIn() && isValidId(drawingId) && isProjectEditor(projectId) && isValidDrawing(incoming());
+        allow delete: if isSignedIn() && isProjectAdmin(projectId);
+
+        // Subcollection: Marks inside drawings
+        match /marks/{markId} {
+          allow get: if true;
+          allow list: if true;
+
+          function isValidMark(data) {
+            return data.type is string && (data.type == 'circle' || data.type == 'rectangle' || data.type == 'line') &&
+                   data.coordinates is map &&
+                   data.label is string && data.label.size() <= 500 &&
+                   data.createdBy is string &&
+                   data.createdAt is timestamp &&
+                   data.evidencePhotos is list && data.evidencePhotos.size() <= 20;
+          }
+
+          // Creation: Allowed if signed-in editor, or if writing with a valid 'edit' share link token
+          allow create: if isValidMark(incoming()) && (
+            (isSignedIn() && isProjectEditor(projectId) && (incoming().createdBy == request.auth.uid || incoming().createdBy == 'admin')) ||
+            (incoming().keys().hasAll(['shareToken']) && isValidEditShareLink(incoming().shareToken, projectId))
+          );
+
+          // Update: Allowed if signed-in editor, or if editing with a valid 'edit' share link token
+          allow update: if isValidMark(incoming()) && (
+            (isSignedIn() && isProjectEditor(projectId)) ||
+            (incoming().keys().hasAll(['shareToken']) && isValidEditShareLink(incoming().shareToken, projectId))
+          );
+
+          // Delete: Allowed if signed-in editor, or if the mark has a valid edit share link
+          allow delete: if (isSignedIn() && isProjectEditor(projectId)) ||
+                          (resource.data.keys().hasAll(['shareToken']) && isValidEditShareLink(resource.data.shareToken, projectId));
+        }
+      }
+
+      // Subcollection: Models
+      match /models/{modelId} {
+        allow get, list: if true;
+
+        function isValidModel(data) {
+          return data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 255 &&
+                 data.url is string && data.url.size() >= 1 && data.url.size() <= 2048 &&
+                 (data.uploadedAt == request.time || data.uploadedAt is timestamp);
+        }
+
+        allow create: if isSignedIn() && isValidId(modelId) && isProjectEditor(projectId) && isValidModel(incoming());
+        allow update: if isSignedIn() && isValidId(modelId) && isProjectEditor(projectId) && isValidModel(incoming());
+        allow delete: if isSignedIn() && isProjectAdmin(projectId);
+      }
+
+      // Subcollection: Members
+      match /members/{memberUid} {
+        allow get: if isSignedIn() && (request.auth.uid == memberUid || isProjectViewer(projectId));
+        allow list: if isSignedIn() && isProjectViewer(projectId);
+        
+        allow create, update, delete: if isSignedIn() && isProjectAdmin(projectId);
+      }
+    }
+
+    // 2. Share Links Collection (Global lookup)
+    match /shareLinks/{shareLinkId} {
+      allow get: if true; // Anyone can retrieve share link details to authenticate access
+      allow list: if isSignedIn() && resource.data.createdBy == request.auth.uid; // Allow creators to list their own share links
+
+      function isValidShareLinkDoc(data) {
+        return data.token is string && data.token.size() >= 10 &&
+               data.projectId is string &&
+               (data.accessLevel == 'view' || data.accessLevel == 'edit') &&
+               (data.createdAt == request.time || data.createdAt is timestamp) &&
+               data.createdBy == request.auth.uid;
+      }
+
+      allow create: if isSignedIn() && isProjectAdmin(incoming().projectId) && isValidShareLinkDoc(incoming());
+      allow update: if isSignedIn() && isProjectAdmin(existing().projectId) && isValidShareLinkDoc(incoming());
+      allow delete: if isSignedIn() && isProjectAdmin(existing().projectId);
+    }
+  }
+}

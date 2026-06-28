@@ -1,0 +1,183 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "A construction site project containing 3D models and drawings",
+      "type": "object",
+      "properties": {
+        "projectName": {
+          "type": "string",
+          "description": "The name of the construction project"
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "UID of the admin who created the project"
+        },
+        "description": {
+          "type": "string",
+          "description": "A short description of the project"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the project was created"
+        }
+      },
+      "required": ["projectName", "createdBy", "createdAt"]
+    },
+    "Drawing": {
+      "title": "Drawing",
+      "description": "A 2D drawing (blueprint/photo) uploaded to a project",
+      "type": "object",
+      "properties": {
+        "fileName": {
+          "type": "string",
+          "description": "Original file name of the drawing"
+        },
+        "url": {
+          "type": "string",
+          "description": "Firebase Storage download URL"
+        },
+        "uploadedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the drawing was uploaded"
+        }
+      },
+      "required": ["fileName", "url", "uploadedAt"]
+    },
+    "Mark": {
+      "title": "Mark",
+      "description": "An interactive geometric observation mark on a drawing",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["circle", "rectangle", "line"],
+          "description": "The geometric shape of the mark"
+        },
+        "coordinates": {
+          "type": "object",
+          "description": "Percentage-based coordinates for responsive rendering"
+        },
+        "label": {
+          "type": "string",
+          "description": "Text label or title of the observation"
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "UID of the user who created the mark"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the mark was created"
+        },
+        "evidencePhotos": {
+          "type": "array",
+          "description": "A list of evidence photos linked to this mark"
+        }
+      },
+      "required": ["type", "coordinates", "label", "createdBy", "createdAt"]
+    },
+    "Model": {
+      "title": "Model",
+      "description": "A 3D GLB model uploaded to a project",
+      "type": "object",
+      "properties": {
+        "fileName": {
+          "type": "string",
+          "description": "Original file name of the GLB model"
+        },
+        "url": {
+          "type": "string",
+          "description": "Firebase Storage download URL"
+        },
+        "uploadedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the model was uploaded"
+        }
+      },
+      "required": ["fileName", "url", "uploadedAt"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "A project member with specific access rights",
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["admin", "edit", "view"],
+          "description": "Access level of the project member"
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the member"
+        }
+      },
+      "required": ["role", "email"]
+    },
+    "ShareLink": {
+      "title": "ShareLink",
+      "description": "A shareable public link with specific access level",
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "description": "Unique secure token for URL lookup"
+        },
+        "projectId": {
+          "type": "string",
+          "description": "ID of the shared project"
+        },
+        "accessLevel": {
+          "type": "string",
+          "enum": ["view", "edit"],
+          "description": "Whether the share link is view-only or allows mark creation"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the share link was created"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Optional expiration date for the link"
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "UID of the admin who generated the share link"
+        }
+      },
+      "required": ["token", "projectId", "accessLevel", "createdAt", "createdBy"]
+    }
+  },
+  "firestore": {
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Collection of projects"
+    },
+    "/projects/{projectId}/drawings/{drawingId}": {
+      "schema": "Drawing",
+      "description": "Drawings uploaded to a specific project"
+    },
+    "/projects/{projectId}/drawings/{drawingId}/marks/{markId}": {
+      "schema": "Mark",
+      "description": "Geometric markings added to a specific project drawing"
+    },
+    "/projects/{projectId}/models/{modelId}": {
+      "schema": "Model",
+      "description": "3D GLB models uploaded to a specific project"
+    },
+    "/projects/{projectId}/members/{memberUid}": {
+      "schema": "Member",
+      "description": "Members assigned to a project and their permission role"
+    },
+    "/shareLinks/{shareLinkId}": {
+      "schema": "ShareLink",
+      "description": "Public shareable link tokens and details"
+    }
+  }
+}

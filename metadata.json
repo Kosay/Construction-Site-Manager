@@ -1,0 +1,8 @@
+{
+  "name": "Construction Site Manager",
+  "description": "Manage construction site works, safety observations, 3D GLB models, and drawings with interactive geometric marks and evidence photos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
