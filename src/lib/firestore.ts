@@ -41,6 +41,58 @@ export async function createProject(projectName: string, description: string, us
 }
 
 /**
+ * Deletes a project from Firestore along with all associated drawings, marks, models, members, and share links.
+ */
+export async function deleteProject(projectId: string): Promise<void> {
+  const path = `projects/${projectId}`;
+  try {
+    // 1. Delete all shareLinks associated with this project
+    const shareLinksSnap = await getDocs(
+      query(collection(db, 'shareLinks'), where('projectId', '==', projectId))
+    );
+    const deleteShareLinkPromises = shareLinksSnap.docs.map((docSnap) => 
+      deleteDoc(doc(db, 'shareLinks', docSnap.id))
+    );
+    await Promise.all(deleteShareLinkPromises);
+
+    // 2. Delete all drawings and their subcollection of marks
+    const drawingsSnap = await getDocs(collection(db, 'projects', projectId, 'drawings'));
+    for (const drawingDoc of drawingsSnap.docs) {
+      const drawingId = drawingDoc.id;
+      
+      // Delete all marks inside this drawing
+      const marksSnap = await getDocs(collection(db, 'projects', projectId, 'drawings', drawingId, 'marks'));
+      const deleteMarkPromises = marksSnap.docs.map((markDoc) => 
+        deleteDoc(doc(db, 'projects', projectId, 'drawings', drawingId, 'marks', markDoc.id))
+      );
+      await Promise.all(deleteMarkPromises);
+
+      // Delete the drawing document
+      await deleteDoc(doc(db, 'projects', projectId, 'drawings', drawingId));
+    }
+
+    // 3. Delete all models under projects/${projectId}/models
+    const modelsSnap = await getDocs(collection(db, 'projects', projectId, 'models'));
+    const deleteModelPromises = modelsSnap.docs.map((modelDoc) => 
+      deleteDoc(doc(db, 'projects', projectId, 'models', modelDoc.id))
+    );
+    await Promise.all(deleteModelPromises);
+
+    // 4. Delete all members under projects/${projectId}/members
+    const membersSnap = await getDocs(collection(db, 'projects', projectId, 'members'));
+    const deleteMemberPromises = membersSnap.docs.map((memberDoc) => 
+      deleteDoc(doc(db, 'projects', projectId, 'members', memberDoc.id))
+    );
+    await Promise.all(deleteMemberPromises);
+
+    // 5. Finally, delete the parent project document itself
+    await deleteDoc(doc(db, 'projects', projectId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+/**
  * Fetches a single project's details
  */
 export async function getProject(projectId: string): Promise<Project | null> {

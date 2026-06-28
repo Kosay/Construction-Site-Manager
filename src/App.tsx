@@ -12,7 +12,8 @@ import {
   addDrawing, 
   addModel, 
   validateShareLink, 
-  getProjectShareLinks 
+  getProjectShareLinks,
+  deleteProject
 } from './lib/firestore';
 import { uploadFile } from './lib/storage';
 import { Project, Drawing, Model, Mark } from './types';
@@ -36,7 +37,8 @@ import {
   User, 
   Check, 
   Loader2, 
-  AlertCircle 
+  AlertCircle,
+  Trash2
 } from 'lucide-react';
 
 function MainAppContent() {
@@ -61,6 +63,8 @@ function MainAppContent() {
   // Navigation states
   const [viewState, setViewState] = useState<'dashboard' | 'workspace' | 'create-project'>('dashboard');
   const [showShareManager, setShowShareManager] = useState(false);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   // File Upload states for active project workspace
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -133,6 +137,21 @@ function MainAppContent() {
       setProjects(projs);
     } catch (error) {
       console.error('Failed to load projects:', error);
+    }
+  };
+
+  const handleDeleteProject = async (projectId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsDeleting(true);
+    try {
+      await deleteProject(projectId);
+      setDeletingProjectId(null);
+      await loadProjectsList();
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      alert('Failed to delete project. Please check permissions or try again.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -345,7 +364,7 @@ function MainAppContent() {
             <div>
               <h1 className="text-xl font-bold text-white tracking-tight">Site Works Manager</h1>
               <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                Securely manage project plans, 3D assets, and interactive geometric annotations.
+                Securely manage project plans and interactive geometric annotations.
               </p>
             </div>
           </div>
@@ -358,10 +377,16 @@ function MainAppContent() {
             Sign in with Google Account
           </button>
 
-          <div className="mt-6 border-t border-slate-800 pt-4 text-center">
-            <span className="text-[10px] font-mono text-slate-500">
+          <div className="mt-6 border-t border-slate-800/60 pt-4 text-center space-y-1">
+            <div className="text-[10px] font-mono text-slate-500">
               SECURE SECRETS AUTHENTICATION LAYER ACTIVE
-            </span>
+            </div>
+            <div className="text-[10px] text-slate-400 font-sans mt-2">
+              Created by <span className="font-semibold text-slate-300">Eng. Kosay Hatem</span> • <a href="mailto:kosay-h@hotmail.com" className="hover:underline hover:text-blue-400">kosay-h@hotmail.com</a>
+            </div>
+            <div className="text-[9px] text-slate-500">
+              +971-566371160
+            </div>
           </div>
         </div>
       </div>
@@ -464,7 +489,42 @@ function MainAppContent() {
                   
                   <div className="mt-5 border-t border-slate-100 dark:border-slate-800 pt-3 flex justify-between items-center text-[10px] text-slate-500">
                     <span>Created: {project.createdAt?.toDate ? project.createdAt.toDate().toLocaleDateString() : 'Recent'}</span>
-                    <span className="font-semibold text-blue-600 group-hover:underline">Open Workspace →</span>
+                    <div className="flex items-center gap-3">
+                      {deletingProjectId === project.id ? (
+                        <div className="flex items-center gap-1.5 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40 rounded px-2 py-0.5" onClick={(e) => e.stopPropagation()}>
+                          <span className="text-[9px] text-rose-600 dark:text-rose-400 font-bold">Delete?</span>
+                          <button
+                            onClick={(e) => handleDeleteProject(project.id, e)}
+                            disabled={isDeleting}
+                            className="text-[9px] text-rose-700 dark:text-rose-400 font-bold hover:underline cursor-pointer"
+                          >
+                            {isDeleting ? '...' : 'Yes'}
+                          </button>
+                          <span className="text-slate-300 dark:text-slate-700">|</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeletingProjectId(null);
+                            }}
+                            className="text-[9px] text-slate-500 font-bold hover:underline cursor-pointer"
+                          >
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeletingProjectId(project.id);
+                          }}
+                          className="p-1 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
+                          title="Delete Project"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      <span className="font-semibold text-blue-600 group-hover:underline">Open Workspace →</span>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -479,7 +539,9 @@ function MainAppContent() {
               <div className="w-2 h-2 rounded-full bg-emerald-600"></div>
               <span className="text-[10px] font-medium text-slate-500">Firebase Connected</span>
             </div>
-            <div className="text-[10px] text-slate-400">Database: Active</div>
+            <div className="text-[10px] text-slate-500">
+              Created by <span className="font-semibold text-slate-700 dark:text-slate-300">Eng. Kosay Hatem</span> (<a href="mailto:kosay-h@hotmail.com" className="hover:underline hover:text-blue-500">kosay-h@hotmail.com</a> / +971-566371160)
+            </div>
           </div>
           <div className="flex items-center gap-4 text-[10px] font-medium text-slate-500">
             <span>Role: <b>Admin (Full)</b></span>
@@ -720,7 +782,9 @@ function MainAppContent() {
             <div className="w-2 h-2 rounded-full bg-emerald-600"></div>
             <span className="text-[10px] font-medium text-slate-500">Firebase Synchronization Enabled</span>
           </div>
-          <div className="text-[10px] text-slate-400">Drawings: {drawings.length}</div>
+          <div className="text-[10px] text-slate-500">
+            Created by <span className="font-semibold text-slate-700 dark:text-slate-300">Eng. Kosay Hatem</span> (<a href="mailto:kosay-h@hotmail.com" className="hover:underline hover:text-blue-500">kosay-h@hotmail.com</a> / +971-566371160)
+          </div>
         </div>
         <div className="flex items-center gap-4 text-[10px] font-medium text-slate-500">
           <span>Role: <b>{isShareView ? (guestCanEdit ? 'Guest Editor' : 'Guest Read-Only') : 'Admin (Full)'}</b></span>
