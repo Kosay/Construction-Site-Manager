@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { X, Calendar, User, Eye, Trash2, Image as ImageIcon, Save, Loader2, ArrowLeft, ArrowRight } from 'lucide-react';
+import { X, Calendar, User, Eye, Trash2, Image as ImageIcon, Save, Loader2, ArrowLeft, ArrowRight, Check } from 'lucide-react';
 import { Mark, EvidencePhoto } from '../types';
 import { EvidencePhotoUpload } from './EvidencePhotoUpload';
 import { updateMark, deleteMark } from '../lib/firestore';
+import { updateProfile } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 
 interface MarkDetailsModalProps {
   projectId: string;
@@ -30,6 +32,42 @@ export const MarkDetailsModal: React.FC<MarkDetailsModalProps> = ({
     mark.evidencePhotos.length > 0 ? mark.evidencePhotos[0].url : null
   );
   const [photoIndex, setPhotoIndex] = useState<number>(0);
+
+  const [category, setCategory] = useState<'safety' | 'measurement' | 'defect' | 'general' | 'progress' | 'quality' | 'other'>(mark.category || 'general');
+
+  const handleUpdateCategory = async (newCategory: 'safety' | 'measurement' | 'defect' | 'general' | 'progress' | 'quality' | 'other') => {
+    setCategory(newCategory);
+    try {
+      await updateMark(projectId, drawingId, mark.id, { category: newCategory }, shareToken);
+      onUpdate();
+    } catch (error) {
+      console.error('Failed to update category:', error);
+      alert('Error updating category.');
+    }
+  };
+
+  const [tempName, setTempName] = useState(() => {
+    return localStorage.getItem('custom_display_name') || auth.currentUser?.displayName || '';
+  });
+  const [updatingName, setUpdatingName] = useState(false);
+
+  const handleUpdateMyName = async () => {
+    if (!tempName.trim()) return;
+    setUpdatingName(true);
+    try {
+      localStorage.setItem('custom_display_name', tempName.trim());
+      if (auth.currentUser) {
+        await updateProfile(auth.currentUser, { displayName: tempName.trim() });
+      }
+      await updateMark(projectId, drawingId, mark.id, { createdByName: tempName.trim() }, shareToken);
+      onUpdate();
+    } catch (error) {
+      console.error('Failed to update name:', error);
+      alert('Error updating display name.');
+    } finally {
+      setUpdatingName(false);
+    }
+  };
 
   const handleSaveLabel = async () => {
     if (!label.trim()) return;
@@ -252,18 +290,97 @@ export const MarkDetailsModal: React.FC<MarkDetailsModalProps> = ({
                 )}
               </div>
 
+              {/* Classification Category Selector */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                  Classification Category
+                </label>
+                {canEdit ? (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { id: 'safety', label: '⚠️ Safety', bg: 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-950/20 dark:border-rose-900/50 dark:text-rose-400' },
+                      { id: 'measurement', label: '📐 Measurement', bg: 'bg-sky-50 border-sky-200 text-sky-700 dark:bg-sky-950/20 dark:border-sky-900/50 dark:text-sky-400' },
+                      { id: 'defect', label: '❌ Defect/Issue', bg: 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/20 dark:border-amber-900/50 dark:text-amber-400' },
+                      { id: 'progress', label: '🚧 Progress', bg: 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/20 dark:border-emerald-900/50 dark:text-emerald-400' },
+                      { id: 'quality', label: '🔍 Quality Ctrl', bg: 'bg-purple-50 border-purple-200 text-purple-700 dark:bg-purple-950/20 dark:border-purple-900/50 dark:text-purple-400' },
+                      { id: 'general', label: '📋 General Slate', bg: 'bg-slate-50 border-slate-200 text-slate-700 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400' },
+                      { id: 'other', label: '📌 Other Note', bg: 'bg-indigo-50 border-indigo-200 text-indigo-700 dark:bg-indigo-950/20 dark:border-indigo-900/50 dark:text-indigo-400' }
+                    ].map((cat) => {
+                      const isSelected = category === cat.id;
+                      return (
+                        <button
+                          key={cat.id}
+                          onClick={() => handleUpdateCategory(cat.id as any)}
+                          className={`px-2 py-1.5 text-[11px] font-medium rounded-lg border transition text-left flex items-center justify-between cursor-pointer ${
+                            isSelected 
+                              ? `${cat.bg} border-2 ring-1 ring-blue-500/30 font-bold` 
+                              : 'bg-white hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                          }`}
+                        >
+                          <span>{cat.label}</span>
+                          {isSelected && <Check className="h-3 w-3 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold ${
+                    category === 'safety' ? 'bg-rose-100 text-rose-800 border border-rose-200 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-900' :
+                    category === 'measurement' ? 'bg-sky-100 text-sky-800 border border-sky-200 dark:bg-sky-950/30 dark:text-sky-300 dark:border-sky-900' :
+                    category === 'defect' ? 'bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900' :
+                    category === 'progress' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900' :
+                    category === 'quality' ? 'bg-purple-100 text-purple-800 border border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-900' :
+                    category === 'other' ? 'bg-indigo-100 text-indigo-800 border border-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-300 dark:border-indigo-900' :
+                    'bg-slate-100 text-slate-800 border border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-800'
+                  }`}>
+                    {category === 'safety' ? '⚠️ Safety Observation' :
+                     category === 'measurement' ? '📐 Measurement' :
+                     category === 'defect' ? '❌ Defect / Issue' :
+                     category === 'progress' ? '🚧 Progress Tracking' :
+                     category === 'quality' ? '🔍 Quality Control' :
+                     category === 'other' ? '📌 Other Note' :
+                     '📋 General Slate'}
+                  </span>
+                )}
+              </div>
+
               {/* Creator Metadata */}
-              <div className="space-y-2.5 p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 shadow-sm">
+              <div className="space-y-3 p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 shadow-sm">
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4 text-slate-400" />
                   <span className="truncate">
                     Reported By:{' '}
                     <strong className="text-slate-800 dark:text-slate-200">
-                      {mark.createdBy.substring(0, 10)}... (Contributor)
+                      {mark.createdByName || (mark.createdBy === 'admin' ? 'Project Owner' : `${mark.createdBy.substring(0, 10)}...`)}
                     </strong>
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
+
+                {/* Text box to update/set displayName */}
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 space-y-1.5">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Change Your Display Name
+                  </label>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={tempName}
+                      onChange={(e) => setTempName(e.target.value)}
+                      placeholder="Enter username..."
+                      maxLength={50}
+                      className="flex-1 px-2 py-1 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 dark:text-slate-100 font-normal"
+                    />
+                    <button
+                      onClick={handleUpdateMyName}
+                      disabled={updatingName || !tempName.trim()}
+                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded font-semibold text-[10px] cursor-pointer transition shrink-0"
+                    >
+                      {updatingName ? '...' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
                   <Calendar className="h-4 w-4 text-slate-400" />
                   <span>
                     Logged On:{' '}

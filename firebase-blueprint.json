@@ -68,6 +68,14 @@
           "type": "string",
           "description": "UID of the user who created the mark"
         },
+        "createdByName": {
+          "type": "string",
+          "description": "Display name of the user who created/edited the mark"
+        },
+        "category": {
+          "type": "string",
+          "description": "The classification of the mark (e.g. safety, measurement, defect, general)"
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",

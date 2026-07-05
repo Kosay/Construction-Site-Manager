@@ -26,12 +26,14 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
   const handleDrawingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      if (!file.type.startsWith('image/')) {
-        setError('Drawings must be a .png, .jpg or .jpeg image file.');
+      const isImage = file.type.startsWith('image/');
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      if (!isImage && !isPdf) {
+        setError('Drawings must be a .png, .jpg, .jpeg or .pdf file.');
         return;
       }
       if (file.size > 50 * 1024 * 1024) {
-        setError('Drawing photo exceeds the 50MB limit.');
+        setError('Drawing blueprint exceeds the 50MB limit.');
         return;
       }
       setDrawingFile(file);
@@ -59,7 +61,7 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
       const projectId = await createProject(projectName.trim(), description.trim(), userId);
 
       // 2. Upload and register initial drawing
-      setUploadStatus('Uploading drawing blueprint (PNG/JPG)...');
+      setUploadStatus('Uploading drawing blueprint (PNG/JPG/PDF)...');
       const drawingPath = `projects/${projectId}/drawings/${Date.now()}_${drawingFile.name}`;
       const drawingUrl = await uploadFile(drawingPath, drawingFile);
       await addDrawing(projectId, drawingFile.name, drawingUrl);
@@ -125,12 +127,12 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
       {/* File Upload Section */}
       <div className="p-4 border border-slate-200 dark:border-slate-800 rounded bg-slate-50 dark:bg-slate-950/40 relative">
         <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase mb-2">
-          2D Drawing Blueprint (PNG / JPG) *
+          2D Drawing Blueprint (PNG / JPG / PDF) *
         </label>
         <input
           ref={drawingInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,application/pdf"
           onChange={handleDrawingChange}
           className="hidden"
           disabled={submitting}

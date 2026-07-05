@@ -3,7 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
+    <title>KMH Constructon Viewer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script>
+      // Fallback if cdnjs fails
+      if (!window.pdfjsLib && !window['pdfjs-dist/build/pdf']) {
+        console.warn("CDNJS PDF.js failed to load. Fetching fallback from jsDelivr...");
+        document.write('<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/build/pdf.min.js"><\/script>');
+      }
+    </script>
+    <script>
+      window.pdfjsLib = window['pdfjs-dist/build/pdf'] || window.pdfjsLib;
+      if (window.pdfjsLib) {
+        // Set worker. Prefer same origin/CDN worker path
+        const isJsdelivr = window.pdfjsLib.GlobalWorkerOptions.workerSrc?.includes('jsdelivr') || !window.pdfjsLib;
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = isJsdelivr 
+          ? 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/build/pdf.worker.min.js'
+          : 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+      }
+    </script>
+    <!-- Native 3D model-viewer library -->
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
   </head>
   <body>
     <div id="root"></div>

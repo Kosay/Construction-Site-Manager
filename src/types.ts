@@ -42,9 +42,11 @@ export interface Mark {
   coordinates: MarkCoordinates;
   label: string;
   createdBy: string;
+  createdByName?: string; // optional name of the user who created/edited the mark
   createdAt: any; // Firestore Timestamp
   evidencePhotos: EvidencePhoto[];
   shareToken?: string; // optional token included to authorize edits in public share views
+  category?: 'safety' | 'measurement' | 'defect' | 'general' | 'progress' | 'quality' | 'other';
 }
 
 export interface ShareLink {
@@ -56,3 +58,20 @@ export interface ShareLink {
   expiresAt: any;
   createdBy: string;
 }
+
+declare module 'react' {
+  namespace JSX {
+    interface IntrinsicElements {
+      'model-viewer': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement> & {
+        src?: string;
+        'camera-controls'?: boolean;
+        autoplay?: boolean;
+        ar?: boolean;
+        'auto-rotate'?: boolean;
+        style?: React.CSSProperties;
+        id?: string;
+      }, HTMLElement>;
+    }
+  }
+}
+

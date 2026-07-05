@@ -215,6 +215,14 @@ export async function addMark(
       evidencePhotos: markData.evidencePhotos,
     };
 
+    if (markData.category) {
+      payload.category = markData.category;
+    }
+
+    if (markData.createdByName) {
+      payload.createdByName = markData.createdByName;
+    }
+
     if (shareToken) {
       payload.shareToken = shareToken;
     }

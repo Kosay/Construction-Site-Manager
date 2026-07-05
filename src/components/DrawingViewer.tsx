@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MousePointer, Circle, Square, Minus, MessageSquare, Plus, Check, X, ShieldAlert, Loader2, Search, Filter, User, Layers, Eye, EyeOff } from 'lucide-react';
+import { MousePointer, Circle, Square, Minus, MessageSquare, Plus, Check, X, ShieldAlert, Loader2, Search, Filter, User, Layers, Eye, EyeOff, ZoomIn, ZoomOut, Maximize2, Expand, Shrink } from 'lucide-react';
 import { Mark, MarkCoordinates } from '../types';
 import { addMark } from '../lib/firestore';
 import { MarkDetailsModal } from './MarkDetailsModal';
@@ -40,6 +40,7 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
   const [newMarkCoords, setNewMarkCoords] = useState<MarkCoordinates | null>(null);
   const [newMarkType, setNewMarkType] = useState<'circle' | 'rectangle' | 'line'>('circle');
   const [newMarkLabel, setNewMarkLabel] = useState('');
+  const [newMarkCategory, setNewMarkCategory] = useState<'safety' | 'measurement' | 'defect' | 'general' | 'progress' | 'quality' | 'other'>('general');
   const [creating, setCreating] = useState(false);
 
   // Sidebar, search, and filtering states
@@ -47,18 +48,170 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterCreator, setFilterCreator] = useState<string>('all');
+  const [filterCategories, setFilterCategories] = useState<string[]>(['safety', 'measurement', 'defect', 'general', 'progress', 'quality', 'other']);
   const [hideFilteredOnCanvas, setHideFilteredOnCanvas] = useState(false);
 
-  // Extract unique creators for filtering options
-  const uniqueCreators = Array.from(new Set(marks.map(m => m.createdBy || 'Unknown')));
+  // Zoom State
+  const [zoomScale, setZoomScale] = useState<number>(1.0);
 
-  // Filter marks based on searchQuery, filterType, and filterCreator
+  // Full-page display mode state
+  const [isFullPage, setIsFullPage] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullPage) {
+        setIsFullPage(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullPage]);
+
+  // Extract unique creators for filtering options, mapping IDs to names
+  const uniqueCreatorsMap = new Map<string, string>();
+  marks.forEach(m => {
+    if (m.createdBy) {
+      const name = m.createdByName || (m.createdBy === 'admin' ? 'Project Owner' : m.createdBy);
+      uniqueCreatorsMap.set(m.createdBy, name);
+    }
+  });
+  const uniqueCreators = Array.from(uniqueCreatorsMap.entries()).map(([id, name]) => ({ id, name }));
+
+  // Filter marks based on searchQuery, filterType, filterCreator, and filterCategories
   const filteredMarks = marks.filter(mark => {
     const labelMatch = mark.label.toLowerCase().includes(searchQuery.toLowerCase());
     const typeMatch = filterType === 'all' || mark.type === filterType;
     const creatorMatch = filterCreator === 'all' || mark.createdBy === filterCreator;
-    return labelMatch && typeMatch && creatorMatch;
+    const markCategory = mark.category || 'general';
+    const categoryMatch = filterCategories.includes(markCategory);
+    return labelMatch && typeMatch && creatorMatch && categoryMatch;
   });
+
+  const getCategoryTheme = (category?: string) => {
+    const cat = category || 'general';
+    switch (cat) {
+      case 'safety':
+        return {
+          bg: 'bg-rose-50 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-100 dark:border-rose-900/20',
+          dot: 'bg-rose-500',
+          label: 'Safety Observation',
+          pill: 'bg-rose-50 text-rose-600 border border-rose-100 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/20'
+        };
+      case 'measurement':
+        return {
+          bg: 'bg-sky-50 text-sky-600 dark:bg-sky-950/20 dark:text-sky-400 border border-sky-100 dark:border-sky-900/20',
+          dot: 'bg-sky-500',
+          label: 'Measurement',
+          pill: 'bg-sky-50 text-sky-600 border border-sky-100 dark:bg-sky-950/20 dark:text-sky-400 dark:border-sky-900/20'
+        };
+      case 'defect':
+        return {
+          bg: 'bg-amber-50 text-amber-600 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-100 dark:border-amber-900/20',
+          dot: 'bg-amber-500',
+          label: 'Defect / Issue',
+          pill: 'bg-amber-50 text-amber-600 border border-amber-100 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/20'
+        };
+      case 'progress':
+        return {
+          bg: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/20',
+          dot: 'bg-emerald-500',
+          label: 'Progress Tracking',
+          pill: 'bg-emerald-50 text-emerald-600 border border-emerald-100 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/20'
+        };
+      case 'quality':
+        return {
+          bg: 'bg-purple-50 text-purple-600 dark:bg-purple-950/20 dark:text-purple-400 border border-purple-100 dark:border-purple-900/20',
+          dot: 'bg-purple-500',
+          label: 'Quality Control',
+          pill: 'bg-purple-50 text-purple-600 border border-purple-100 dark:bg-purple-950/20 dark:text-purple-400 dark:border-purple-900/20'
+        };
+      case 'other':
+        return {
+          bg: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/20 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/20',
+          dot: 'bg-indigo-500',
+          label: 'Other / Note',
+          pill: 'bg-indigo-50 text-indigo-600 border border-indigo-100 dark:bg-indigo-950/20 dark:text-indigo-400 dark:border-indigo-900/20'
+        };
+      case 'general':
+      default:
+        return {
+          bg: 'bg-slate-50 text-slate-600 dark:bg-slate-900 dark:text-slate-400 border border-slate-200 dark:border-slate-800',
+          dot: 'bg-slate-400',
+          label: 'General Note',
+          pill: 'bg-slate-50 text-slate-600 border border-slate-100 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-800'
+        };
+    }
+  };
+
+  const getCategoryCanvasColor = (category?: string) => {
+    const cat = category || 'general';
+    switch (cat) {
+      case 'safety':
+        return {
+          fill: 'fill-rose-500/15',
+          hoverFill: 'group-hover:fill-rose-500/25',
+          stroke: 'stroke-rose-500',
+          dot: 'fill-rose-600',
+          lineFg: 'stroke-rose-600',
+          lineBg: 'stroke-rose-500/20'
+        };
+      case 'measurement':
+        return {
+          fill: 'fill-sky-500/15',
+          hoverFill: 'group-hover:fill-sky-500/25',
+          stroke: 'stroke-sky-500',
+          dot: 'fill-sky-600',
+          lineFg: 'stroke-sky-600',
+          lineBg: 'stroke-sky-500/20'
+        };
+      case 'defect':
+        return {
+          fill: 'fill-amber-500/15',
+          hoverFill: 'group-hover:fill-amber-500/25',
+          stroke: 'stroke-amber-500',
+          dot: 'fill-amber-600',
+          lineFg: 'stroke-amber-600',
+          lineBg: 'stroke-amber-500/20'
+        };
+      case 'progress':
+        return {
+          fill: 'fill-emerald-500/15',
+          hoverFill: 'group-hover:fill-emerald-500/25',
+          stroke: 'stroke-emerald-500',
+          dot: 'fill-emerald-600',
+          lineFg: 'stroke-emerald-600',
+          lineBg: 'stroke-emerald-500/20'
+        };
+      case 'quality':
+        return {
+          fill: 'fill-purple-500/15',
+          hoverFill: 'group-hover:fill-purple-500/25',
+          stroke: 'stroke-purple-500',
+          dot: 'fill-purple-600',
+          lineFg: 'stroke-purple-600',
+          lineBg: 'stroke-purple-500/20'
+        };
+      case 'other':
+        return {
+          fill: 'fill-indigo-500/15',
+          hoverFill: 'group-hover:fill-indigo-500/25',
+          stroke: 'stroke-indigo-500',
+          dot: 'fill-indigo-600',
+          lineFg: 'stroke-indigo-600',
+          lineBg: 'stroke-indigo-500/20'
+        };
+      case 'general':
+      default:
+        return {
+          fill: 'fill-slate-500/15',
+          hoverFill: 'group-hover:fill-slate-500/25',
+          stroke: 'stroke-slate-500',
+          dot: 'fill-slate-600',
+          lineFg: 'stroke-slate-600',
+          lineBg: 'stroke-slate-500/20'
+        };
+    }
+  };
 
   const getShapeIcon = (type: string, className = "h-4 w-4") => {
     switch (type) {
@@ -71,6 +224,104 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+
+  // PDF Rendering Refs and States
+  const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [pdfRenderLoading, setPdfRenderLoading] = useState(false);
+  const [pdfRenderError, setPdfRenderError] = useState<string | null>(null);
+
+  const isPdf = drawingUrl.toLowerCase().includes('.pdf') || drawingName.toLowerCase().endsWith('.pdf') || drawingUrl.startsWith('data:application/pdf');
+
+  useEffect(() => {
+    if (!isPdf || !drawingUrl) return;
+
+    let active = true;
+    setPdfRenderLoading(true);
+    setPdfRenderError(null);
+
+    const renderPdf = async () => {
+      try {
+        let pdfjs = (window as any).pdfjsLib;
+        if (!pdfjs) {
+          // If library is still loading, wait a bit and retry
+          for (let i = 0; i < 15; i++) {
+            await new Promise(r => setTimeout(r, 200));
+            pdfjs = (window as any).pdfjsLib;
+            if (pdfjs) break;
+          }
+        }
+
+        if (!pdfjs) {
+          throw new Error("PDF.js library failed to load. Please check your internet connection.");
+        }
+
+        // Load document with a highly robust strategy to bypass CORS and range request errors
+        let loadingTask;
+        try {
+          console.log("Attempting standard fetch of PDF to bypass CORS/Range restrictions:", drawingUrl);
+          const response = await fetch(drawingUrl);
+          if (!response.ok) {
+            throw new Error(`HTTP fetch failed with status: ${response.status}`);
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          loadingTask = pdfjs.getDocument({ data: arrayBuffer });
+        } catch (fetchErr: any) {
+          console.warn("Direct PDF fetch failed, falling back to simple URL loading without range requests:", fetchErr);
+          // Fall back to simple URL loading with range requests and streaming disabled
+          loadingTask = pdfjs.getDocument({
+            url: drawingUrl,
+            disableRange: true,
+            disableStream: true
+          });
+        }
+        
+        const pdf = await loadingTask.promise;
+        
+        if (!active) return;
+
+        // Get first page
+        const page = await pdf.getPage(1);
+        if (!active) return;
+
+        // Render to canvas
+        const canvas = pdfCanvasRef.current;
+        if (!canvas) return;
+
+        const context = canvas.getContext('2d');
+        if (!context) return;
+
+        // Scale viewport to high quality for details
+        const viewport = page.getViewport({ scale: 2.0 });
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        const renderContext = {
+          canvasContext: context,
+          viewport: viewport
+        };
+
+        await page.render(renderContext).promise;
+        
+        if (active) {
+          setPdfRenderLoading(false);
+          // Trigger the onUpdate logic to handle marks coordinates
+          onUpdate();
+        }
+      } catch (err: any) {
+        console.error("Error rendering PDF blueprint:", err);
+        if (active) {
+          setPdfRenderError(err?.message || "Failed to render PDF page. Make sure the file is a valid PDF.");
+          setPdfRenderLoading(false);
+        }
+      }
+    };
+
+    renderPdf();
+
+    return () => {
+      active = false;
+    };
+  }, [drawingUrl, isPdf]);
 
   // Reset drawing states when active tool changes
   useEffect(() => {
@@ -200,12 +451,15 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
 
     try {
       const authorUid = shareToken ? `anonymous_${shareToken.substring(0, 5)}` : (user?.uid || 'admin');
+      const authorName = localStorage.getItem('custom_display_name') || user?.displayName || user?.email || (authorUid === 'admin' ? 'Project Owner' : authorUid);
       
       await addMark(projectId, drawingId, {
         type: newMarkType,
         coordinates: newMarkCoords,
         label: newMarkLabel.trim(),
         createdBy: authorUid,
+        createdByName: authorName,
+        category: newMarkCategory,
         evidencePhotos: []
       }, shareToken);
 
@@ -213,6 +467,7 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
       setShowCreateDialog(false);
       setNewMarkCoords(null);
       setNewMarkLabel('');
+      setNewMarkCategory('general');
       setActiveTool('select'); // drop tool back to select
     } catch (error) {
       console.error('Failed to create mark:', error);
@@ -223,22 +478,26 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
   };
 
   return (
-    <div className="flex flex-col w-full h-full min-h-[400px] bg-slate-50 dark:bg-slate-900 rounded overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm relative">
+    <div className={`flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden ${
+      isFullPage 
+        ? 'fixed inset-0 z-40 w-screen h-screen' 
+        : 'w-full h-full min-h-[400px] rounded border border-slate-200 dark:border-slate-800 shadow-sm relative'
+    }`}>
       
       {/* Drawings Toolbar */}
       <div className="bg-white dark:bg-slate-950 p-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0 flex-wrap gap-2 z-10">
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1 text-xs font-semibold ${
+            className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1.5 text-xs font-semibold ${
               isSidebarOpen 
                 ? 'bg-slate-100 border-slate-200 text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'
                 : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-500 dark:bg-slate-950 dark:border-slate-800 dark:text-slate-400'
             }`}
-            title={isSidebarOpen ? "Collapse Filter Sidebar" : "Expand Filter Sidebar"}
+            title={isSidebarOpen ? "Hide Blueprint Annotations" : "Show Blueprint Annotations"}
           >
-            <Filter className="h-3.5 w-3.5" />
-            <span>{isSidebarOpen ? "Hide Filters" : "Show Filters"}</span>
+            <Layers className="h-3.5 w-3.5" />
+            <span>{isSidebarOpen ? "Hide Blueprint Annotations" : "Show Blueprint Annotations"}</span>
           </button>
 
           <span className="text-slate-200 dark:text-slate-800 mx-1 font-light">|</span>
@@ -306,6 +565,53 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
               </button>
             </>
           )}
+
+          {/* Zoom Controls */}
+          <span className="text-slate-200 dark:text-slate-800 mx-1 font-light">|</span>
+          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-1.5 py-1">
+            Zoom:
+          </span>
+          <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded px-1.5 py-0.5">
+            <button
+              onClick={() => setZoomScale(prev => Math.max(0.5, prev - 0.25))}
+              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 hover:text-slate-700 transition cursor-pointer"
+              title="Zoom Out"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </button>
+            <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400 min-w-[36px] text-center">
+              {Math.round(zoomScale * 100)}%
+            </span>
+            <button
+              onClick={() => setZoomScale(prev => Math.min(4.0, prev + 0.25))}
+              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-500 hover:text-slate-700 transition cursor-pointer"
+              title="Zoom In"
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setZoomScale(1.0)}
+              className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-slate-600 transition cursor-pointer border-l border-slate-200 dark:border-slate-700 ml-1 pl-1.5"
+              title="Reset Zoom to 100%"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <span className="text-slate-200 dark:text-slate-800 mx-1 font-light">|</span>
+          
+          <button
+            onClick={() => setIsFullPage(!isFullPage)}
+            className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded border transition cursor-pointer ${
+              isFullPage
+                ? 'bg-amber-600 border-amber-600 hover:bg-amber-700 text-white shadow-sm'
+                : 'bg-blue-50 border-blue-200 hover:bg-blue-100 text-blue-700 dark:bg-slate-900 dark:border-slate-800 dark:text-blue-400'
+            }`}
+            title={isFullPage ? "Exit Full Screen Mode (Esc)" : "Fill Page (Toggle Full Screen View)"}
+          >
+            {isFullPage ? <Shrink className="h-3.5 w-3.5" /> : <Expand className="h-3.5 w-3.5" />}
+            <span>{isFullPage ? "Exit Full Screen" : "Fill Page"}</span>
+          </button>
         </div>
 
         {/* Informational Status or Active drawing step */}
@@ -411,13 +717,51 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
                   <option value="all">All Contributors</option>
                   <option value="admin">Project Owner (Admin)</option>
                   {uniqueCreators
-                    .filter((creator) => creator !== 'admin')
-                    .map((creator) => (
-                      <option key={creator} value={creator}>
-                        {creator}
+                    .filter((c) => c.id !== 'admin')
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
                       </option>
                     ))}
                 </select>
+              </div>
+
+              {/* Filter by Category Checklist */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
+                  Observation Categories
+                </label>
+                <div className="space-y-1.5 bg-slate-50/50 dark:bg-slate-900/50 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-800/60 shadow-sm">
+                  {[
+                    { id: 'safety', label: '⚠️ Safety Observations', colorClass: 'bg-rose-500 text-rose-500' },
+                    { id: 'measurement', label: '📐 Measurements', colorClass: 'bg-sky-500 text-sky-500' },
+                    { id: 'defect', label: '❌ Defects / Issues', colorClass: 'bg-amber-500 text-amber-500' },
+                    { id: 'progress', label: '🚧 Progress Tracking', colorClass: 'bg-emerald-500 text-emerald-500' },
+                    { id: 'quality', label: '🔍 Quality Control', colorClass: 'bg-purple-500 text-purple-500' },
+                    { id: 'general', label: '📋 General Slate Notes', colorClass: 'bg-slate-400 text-slate-400' },
+                    { id: 'other', label: '📌 Other / Notes', colorClass: 'bg-indigo-500 text-indigo-500' }
+                  ].map((cat) => {
+                    const isChecked = filterCategories.includes(cat.id);
+                    return (
+                      <label key={cat.id} className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            if (isChecked) {
+                              setFilterCategories(prev => prev.filter(c => c !== cat.id));
+                            } else {
+                              setFilterCategories(prev => [...prev, cat.id]);
+                            }
+                          }}
+                          className="rounded text-blue-600 border-slate-300 dark:border-slate-800 focus:ring-blue-500 h-3.5 w-3.5 cursor-pointer"
+                        />
+                        <span className={`w-2 h-2 rounded-full ${cat.colorClass.split(' ')[0]}`} />
+                        <span>{cat.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Canvas visibility toggle */}
@@ -463,13 +807,7 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
                             : 'bg-white dark:bg-slate-950 border-slate-100 hover:border-slate-200 hover:bg-slate-100/50 dark:border-slate-900 dark:hover:border-slate-800/50'
                         }`}
                       >
-                        <div className={`p-1 rounded shrink-0 mt-0.5 ${
-                          mark.type === 'circle' 
-                            ? 'bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400' 
-                            : mark.type === 'rectangle'
-                              ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/20 dark:text-amber-400'
-                              : 'bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400'
-                        }`}>
+                        <div className={`p-1 rounded shrink-0 mt-0.5 ${getCategoryTheme(mark.category).bg}`}>
                           {getShapeIcon(mark.type, "h-3.5 w-3.5")}
                         </div>
                         <div className="min-w-0 flex-1">
@@ -480,7 +818,7 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
                             <span className="flex items-center gap-0.5 truncate max-w-[110px]">
                               <User className="h-2.5 w-2.5 text-slate-400 shrink-0" />
                               <span className="truncate">
-                                {mark.createdBy === 'admin' ? 'Project Owner' : mark.createdBy}
+                                {mark.createdByName || (mark.createdBy === 'admin' ? 'Project Owner' : mark.createdBy)}
                               </span>
                             </span>
                             {mark.evidencePhotos.length > 0 && (
@@ -491,6 +829,11 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
                                 </span>
                               </>
                             )}
+                          </div>
+                          <div className="flex items-center gap-1 mt-1 flex-wrap">
+                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold tracking-wider uppercase border ${getCategoryTheme(mark.category).pill}`}>
+                              {getCategoryTheme(mark.category).label}
+                            </span>
                           </div>
                         </div>
                       </button>
@@ -504,6 +847,24 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
 
         {/* Main Drawing Image Container */}
         <div className="flex-1 h-full relative overflow-auto flex items-center justify-center p-4">
+          
+          {isPdf && pdfRenderLoading && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-100/60 dark:bg-slate-950/60 backdrop-blur-xs">
+              <Loader2 className="h-8 w-8 text-blue-500 animate-spin mb-2" />
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider animate-pulse">
+                Rendering PDF Blueprint...
+              </p>
+            </div>
+          )}
+
+          {isPdf && pdfRenderError && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-100/90 dark:bg-slate-950/90 backdrop-blur-xs p-4 text-center">
+              <ShieldAlert className="h-10 w-10 text-rose-500 mb-2" />
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-100">PDF Render Failure</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md">{pdfRenderError}</p>
+            </div>
+          )}
+
           <div
             ref={containerRef}
             onMouseDown={handleMouseDown}
@@ -513,15 +874,24 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
             }`}
             style={{ width: 'fit-content', height: 'fit-content' }}
           >
-            {/* Main Construction Photo */}
-            <img
-              ref={imageRef}
-              src={drawingUrl}
-              alt={drawingName}
-              referrerPolicy="no-referrer"
-              className="max-h-[70vh] w-auto block object-contain pointer-events-none"
-              onLoad={() => onUpdate()} // trigger update on load to handle coordinates
-            />
+            {/* Main Construction Photo / Canvas */}
+            {isPdf ? (
+              <canvas
+                ref={pdfCanvasRef}
+                className="w-auto block object-contain pointer-events-none transition-all duration-200"
+                style={{ maxHeight: isFullPage ? `${85 * zoomScale}vh` : `${70 * zoomScale}vh` }}
+              />
+            ) : (
+              <img
+                ref={imageRef}
+                src={drawingUrl}
+                alt={drawingName}
+                referrerPolicy="no-referrer"
+                className="w-auto block object-contain pointer-events-none transition-all duration-200"
+                style={{ maxHeight: isFullPage ? `${85 * zoomScale}vh` : `${70 * zoomScale}vh` }}
+                onLoad={() => onUpdate()} // trigger update on load to handle coordinates
+              />
+            )}
 
             {/* Interactive SVG Mark Overlay */}
             <svg
@@ -557,14 +927,14 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
                           cx={`${x}%`}
                           cy={`${y}%`}
                           r={mark.coordinates.radius ? `${mark.coordinates.radius}%` : (isSelected ? "18" : "12")}
-                          className="fill-red-500/15 group-hover:fill-red-500/25 stroke-red-500 stroke-[1.5] group-hover:stroke-2 transition-all duration-200"
+                          className={`${getCategoryCanvasColor(mark.category).fill} ${getCategoryCanvasColor(mark.category).hoverFill} ${getCategoryCanvasColor(mark.category).stroke} stroke-[1.5] group-hover:stroke-2 transition-all duration-200`}
                         />
                         {/* Center handle point */}
                         <circle
                           cx={`${x}%`}
                           cy={`${y}%`}
                           r="5"
-                          className="fill-red-600 stroke-white stroke-2 shadow"
+                          className={`${getCategoryCanvasColor(mark.category).dot} stroke-white stroke-2 shadow`}
                         />
                       </>
                     )}
@@ -576,8 +946,8 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
                         y={`${y}%`}
                         width={`${width}%`}
                         height={`${height}%`}
-                        className={`fill-amber-500/10 stroke-amber-500 group-hover:fill-amber-500/20 transition-all duration-200 ${
-                          isSelected ? 'stroke-2 ring-2 ring-amber-500' : 'stroke-1'
+                        className={`${getCategoryCanvasColor(mark.category).fill} ${getCategoryCanvasColor(mark.category).hoverFill} ${getCategoryCanvasColor(mark.category).stroke} transition-all duration-200 ${
+                          isSelected ? 'stroke-2 ring-2 ring-blue-500/50' : 'stroke-[1.5]'
                         }`}
                       />
                     )}
@@ -591,20 +961,20 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
                           y1={`${y}%`}
                           x2={`${x2}%`}
                           y2={`${y2}%`}
-                          className="stroke-blue-500/20 hover:stroke-blue-500/30 stroke-[16] transition-all duration-200"
+                          className={`${getCategoryCanvasColor(mark.category).lineBg} hover:stroke-[24] stroke-[16] transition-all duration-200 cursor-pointer`}
                         />
                         <line
                           x1={`${x}%`}
                           y1={`${y}%`}
                           x2={`${x2}%`}
                           y2={`${y2}%`}
-                          className={`stroke-blue-600 transition-all duration-200 ${
+                          className={`${getCategoryCanvasColor(mark.category).lineFg} transition-all duration-200 ${
                             isSelected ? 'stroke-[4]' : 'stroke-2'
                           }`}
                         />
                         {/* End node dots */}
-                        <circle cx={`${x}%`} cy={`${y}%`} r="4" className="fill-blue-700" />
-                        <circle cx={`${x2}%`} cy={`${y2}%`} r="4" className="fill-blue-700" />
+                        <circle cx={`${x}%`} cy={`${y}%`} r="4" className={getCategoryCanvasColor(mark.category).dot} />
+                        <circle cx={`${x2}%`} cy={`${y2}%`} r="4" className={getCategoryCanvasColor(mark.category).dot} />
                       </>
                     )}
 
@@ -713,6 +1083,41 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
                 }
               }}
             />
+
+            {/* Category selection inside new mark dialog */}
+            <div className="mt-4">
+              <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
+                Classification Category
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'safety', label: '⚠️ Safety Obs.', bg: 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-400' },
+                  { id: 'measurement', label: '📐 Measurement', bg: 'bg-sky-50 dark:bg-sky-950/20 border-sky-200 dark:border-sky-900/50 text-sky-700 dark:text-sky-400' },
+                  { id: 'defect', label: '❌ Defect/Issue', bg: 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50 text-amber-700 dark:text-amber-400' },
+                  { id: 'progress', label: '🚧 Progress', bg: 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400' },
+                  { id: 'quality', label: '🔍 Quality Ctrl', bg: 'bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900/50 text-purple-700 dark:text-purple-400' },
+                  { id: 'general', label: '📋 General Slate', bg: 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-400' },
+                  { id: 'other', label: '📌 Other / Note', bg: 'bg-indigo-50 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-400' }
+                ].map((cat) => {
+                  const isSelected = newMarkCategory === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setNewMarkCategory(cat.id as any)}
+                      className={`px-3 py-2 text-xs font-semibold rounded-lg border transition text-left flex items-center justify-between cursor-pointer ${
+                        isSelected 
+                          ? `${cat.bg} border-2 ring-1 ring-blue-500/50` 
+                          : 'bg-white hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      <span>{cat.label}</span>
+                      {isSelected && <Check className="h-3.5 w-3.5" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             <div className="mt-5 flex justify-end gap-2 text-sm font-medium">
               <button

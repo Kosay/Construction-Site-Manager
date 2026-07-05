@@ -20,7 +20,7 @@ import { Project, Drawing, Model, Mark } from './types';
 import { DrawingViewer } from './components/DrawingViewer';
 import { ProjectForm } from './components/ProjectForm';
 import { ShareLinkGenerator } from './components/ShareLinkGenerator';
-import { signInAnonymously } from 'firebase/auth';
+import { signInAnonymously, updateProfile } from 'firebase/auth';
 import { auth } from './lib/firebase';
 import { 
   LogOut, 
@@ -62,6 +62,7 @@ function MainAppContent() {
 
   // Navigation states
   const [viewState, setViewState] = useState<'dashboard' | 'workspace' | 'create-project'>('dashboard');
+  const [workspaceMode, setWorkspaceMode] = useState<'2d' | '3d'>('2d');
   const [showShareManager, setShowShareManager] = useState(false);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
@@ -72,6 +73,36 @@ function MainAppContent() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const drawingUploadInputRef = useRef<HTMLInputElement>(null);
   const modelUploadInputRef = useRef<HTMLInputElement>(null);
+
+  // User Profile Name States
+  const [displayNameInput, setDisplayNameInput] = useState(() => {
+    return localStorage.getItem('custom_display_name') || '';
+  });
+  const [savingName, setSavingName] = useState(false);
+
+  // Sync state if user loads later
+  useEffect(() => {
+    if (user && !displayNameInput) {
+      setDisplayNameInput(localStorage.getItem('custom_display_name') || user.displayName || '');
+    }
+  }, [user, displayNameInput]);
+
+  const handleSaveDisplayName = async () => {
+    if (!displayNameInput.trim()) return;
+    setSavingName(true);
+    try {
+      localStorage.setItem('custom_display_name', displayNameInput.trim());
+      if (user) {
+        await updateProfile(user, { displayName: displayNameInput.trim() });
+      }
+      alert('Your user display name has been successfully updated!');
+    } catch (error) {
+      console.error(error);
+      alert('Failed to update display name.');
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   // 1. Check for Share Link Token on mount
   useEffect(() => {
@@ -119,6 +150,7 @@ function MainAppContent() {
 
       setActiveProject(proj);
       setViewState('workspace');
+      setWorkspaceMode('2d');
       
       // Load assets
       await loadProjectAssets(proj.id);
@@ -198,6 +230,7 @@ function MainAppContent() {
     setActiveProject(project);
     setViewState('workspace');
     setShowShareManager(false);
+    setWorkspaceMode('2d');
     await loadProjectAssets(project.id);
   };
 
@@ -449,6 +482,37 @@ function MainAppContent() {
               <Plus className="h-4 w-4" />
               New Project
             </button>
+          </div>
+
+          {/* Display Name settings */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm animate-fade-in">
+            <div className="space-y-1">
+              <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5 uppercase tracking-wider">
+                <User className="h-3.5 w-3.5 text-blue-500" />
+                Contributor Identity Settings
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Your current name is: <span className="text-blue-600 font-semibold">{user?.displayName || user?.email || 'Anonymous'}</span>. Change it below to personalize observation reports.
+              </p>
+            </div>
+            
+            <div className="flex gap-2 shrink-0">
+              <input
+                type="text"
+                placeholder="Set Your Display Name"
+                value={displayNameInput}
+                onChange={(e) => setDisplayNameInput(e.target.value)}
+                maxLength={50}
+                className="px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 w-full md:w-56 text-slate-900 dark:text-slate-100"
+              />
+              <button
+                onClick={handleSaveDisplayName}
+                disabled={savingName || !displayNameInput.trim()}
+                className="py-1.5 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold transition cursor-pointer"
+              >
+                {savingName ? 'Saving...' : 'Update Name'}
+              </button>
+            </div>
           </div>
 
           {projects.length === 0 ? (
@@ -703,55 +767,135 @@ function MainAppContent() {
 
           {/* IMAGE DRAWING VIEWPORT & MARK OVERLAY */}
           <div className="flex flex-col overflow-hidden h-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded shadow-sm">
-            <div className="flex items-center justify-between px-4 py-2 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 shrink-0">
-              <div className="flex items-center gap-2">
-                <ImageIcon className="h-4 w-4 text-emerald-600" />
-                <h3 className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                  2D Structural Drawing & Observations
-                </h3>
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 shrink-0">
+              {/* Left Side: 2D/3D Mode Selector */}
+              <div className="flex items-center gap-1.5 bg-slate-200/60 dark:bg-slate-900/60 p-0.5 rounded-lg border border-slate-200/50 dark:border-slate-800">
+                <button
+                  onClick={() => setWorkspaceMode('2d')}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
+                    workspaceMode === '2d'
+                      ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200/10'
+                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+                >
+                  <ImageIcon className="h-3.5 w-3.5" />
+                  <span>2D Plan View</span>
+                </button>
+                <button
+                  onClick={() => {
+                    if (models.length > 0) {
+                      setWorkspaceMode('3d');
+                    }
+                  }}
+                  disabled={models.length === 0}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold transition ${
+                    models.length === 0
+                      ? 'opacity-50 cursor-not-allowed text-slate-400 dark:text-slate-600'
+                      : workspaceMode === '3d'
+                      ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200/10 cursor-pointer'
+                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 cursor-pointer'
+                  }`}
+                  title={models.length === 0 ? 'No GLB 3D model uploaded yet' : 'Switch to 3D BIM Model'}
+                >
+                  <Box className="h-3.5 w-3.5" />
+                  <span>3D BIM Model {models.length === 0 ? '(Inactive)' : ''}</span>
+                </button>
               </div>
 
-              {/* Drawing select tab */}
-              <div className="flex items-center gap-2">
-                {drawings.length > 0 && (
-                  <select
-                    value={activeDrawing?.id || ''}
-                    onChange={(e) => {
-                      const matched = drawings.find(d => d.id === e.target.value);
-                      if (matched) handleDrawingSelect(matched);
-                    }}
-                    className="p-1 text-[10px] font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded cursor-pointer max-w-[150px] focus:outline-none"
-                  >
-                    {drawings.map(d => (
-                      <option key={d.id} value={d.id}>{d.fileName}</option>
-                    ))}
-                  </select>
+              {/* Right Side: Mode-dependent uploaders and selection */}
+              <div className="flex items-center gap-3">
+                {workspaceMode === '2d' && (
+                  <div className="flex items-center gap-2">
+                    {drawings.length > 0 && (
+                      <select
+                        value={activeDrawing?.id || ''}
+                        onChange={(e) => {
+                          const matched = drawings.find(d => d.id === e.target.value);
+                          if (matched) handleDrawingSelect(matched);
+                        }}
+                        className="p-1 text-[10px] font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded cursor-pointer max-w-[150px] focus:outline-none"
+                      >
+                        {drawings.map(d => (
+                          <option key={d.id} value={d.id}>{d.fileName}</option>
+                        ))}
+                      </select>
+                    )}
+
+                    {/* Sub-Uploader for more drawings (Admin only) */}
+                    {!isShareView && (
+                      <>
+                        <input
+                          ref={drawingUploadInputRef}
+                          type="file"
+                          accept="image/*,application/pdf"
+                          onChange={handleUploadDrawing}
+                          className="hidden"
+                        />
+                        <button
+                          onClick={() => drawingUploadInputRef.current?.click()}
+                          className="flex items-center gap-1 py-1 px-2.5 rounded border border-slate-200 dark:border-slate-800 bg-white hover:bg-slate-50 text-slate-600 hover:text-blue-600 text-[10px] font-bold cursor-pointer transition"
+                          title="Upload Drawing Image or PDF"
+                        >
+                          <Plus className="h-3 w-3" />
+                          <span>Add Plan</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
                 )}
 
-                {/* Sub-Uploader for more drawings (Admin only) */}
+                {/* GLB File controls (Admin only) */}
                 {!isShareView && (
-                  <>
+                  <div className="flex items-center gap-2">
                     <input
-                      ref={drawingUploadInputRef}
+                      ref={modelUploadInputRef}
                       type="file"
-                      accept="image/*"
-                      onChange={handleUploadDrawing}
+                      accept=".glb"
+                      onChange={handleUploadModel}
                       className="hidden"
                     />
                     <button
-                      onClick={() => drawingUploadInputRef.current?.click()}
-                      className="p-1 rounded border border-slate-200 dark:border-slate-800 hover:bg-slate-100 text-slate-500 cursor-pointer transition"
-                      title="Upload Drawing Image"
+                      onClick={() => modelUploadInputRef.current?.click()}
+                      className="flex items-center gap-1.5 py-1 px-2.5 rounded border border-blue-200 dark:border-blue-900/30 bg-blue-50 hover:bg-blue-100/80 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400 text-[10px] font-bold cursor-pointer transition shadow-sm"
+                      title="Upload 3D GLB Model"
                     >
-                      <Plus className="h-3 w-3" />
+                      <UploadCloud className="h-3.5 w-3.5" />
+                      <span>{models.length > 0 ? 'Replace GLB' : 'Upload GLB'}</span>
                     </button>
-                  </>
+                  </div>
                 )}
               </div>
             </div>
 
-            <div className="flex-1 min-h-[250px] overflow-hidden relative">
-              {activeDrawing && activeProject ? (
+            {/* Viewport Render Area */}
+            <div className="flex-1 min-h-[250px] overflow-hidden relative bg-slate-50 dark:bg-slate-950">
+              {workspaceMode === '3d' && activeModel ? (
+                <div className="w-full h-full relative flex flex-col bg-slate-900">
+                  <model-viewer
+                    id="glb-viewer"
+                    src={activeModel.url}
+                    camera-controls
+                    autoplay
+                    auto-rotate
+                    style={{ width: '100%', height: '100%' }}
+                  >
+                  </model-viewer>
+                  
+                  {/* Floating overlay with model details */}
+                  <div className="absolute bottom-4 left-4 bg-slate-900/90 backdrop-blur border border-slate-700/50 rounded-lg p-3 text-xs font-sans text-left space-y-1 shadow-lg max-w-sm">
+                    <div className="flex items-center gap-1.5 text-blue-400 font-bold uppercase tracking-wider text-[10px]">
+                      <Box className="h-3.5 w-3.5" />
+                      <span>3D BIM Environment</span>
+                    </div>
+                    <div className="text-white font-medium truncate">
+                      File: {activeModel.fileName}
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      Uploaded: {activeModel.uploadedAt?.toDate ? activeModel.uploadedAt.toDate().toLocaleDateString() : 'Recent'}
+                    </div>
+                  </div>
+                </div>
+              ) : activeDrawing && activeProject ? (
                 <DrawingViewer
                   projectId={activeProject.id}
                   drawingId={activeDrawing.id}
