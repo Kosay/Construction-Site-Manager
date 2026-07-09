@@ -4,6 +4,8 @@ export interface Project {
   createdBy: string;
   description: string;
   createdAt: any; // Firestore Timestamp or string
+  kmlUrl?: string;
+  kmlFileName?: string;
 }
 
 export interface Drawing {
@@ -57,6 +59,19 @@ export interface ShareLink {
   createdAt: any;
   expiresAt: any;
   createdBy: string;
+}
+
+export interface MapPoint {
+  id: string;
+  lat: number;
+  lng: number;
+  label: string;
+  category?: 'safety' | 'measurement' | 'defect' | 'general' | 'progress' | 'quality' | 'other';
+  createdBy: string;
+  createdByName?: string;
+  createdAt: any;
+  evidencePhotos: EvidencePhoto[];
+  shareToken?: string;
 }
 
 declare module 'react' {

@@ -12,9 +12,10 @@ interface ProjectFormProps {
 export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onCancel }) => {
   const [projectName, setProjectName] = useState('');
   const [description, setDescription] = useState('');
-  
+
   // Files state
   const [drawingFile, setDrawingFile] = useState<File | null>(null);
+  const [kmlFile, setKmlFile] = useState<File | null>(null);
 
   // Status state
   const [submitting, setSubmitting] = useState(false);
@@ -22,6 +23,7 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
   const [error, setError] = useState<string | null>(null);
 
   const drawingInputRef = useRef<HTMLInputElement>(null);
+  const kmlInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrawingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -41,6 +43,22 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
     }
   };
 
+  const handleKmlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (!file.name.toLowerCase().endsWith('.kml')) {
+        setError('Site map must be a .kml file.');
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setError('KML file exceeds the 10MB limit.');
+        return;
+      }
+      setKmlFile(file);
+      setError(null);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!projectName.trim()) {
@@ -56,11 +74,20 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
     setError(null);
 
     try {
-      // 1. Create project metadata document
-      setUploadStatus('Creating project metadata...');
-      const projectId = await createProject(projectName.trim(), description.trim(), userId);
+      // 1. Prepare KML data if file exists
+      let kmlData = null;
+      if (kmlFile) {
+        setUploadStatus('Uploading site map (KML)...');
+        const kmlPath = `projects/${Date.now()}_${kmlFile.name}`;
+        const kmlUrl = await uploadFile(kmlPath, kmlFile);
+        kmlData = { url: kmlUrl, fileName: kmlFile.name };
+      }
 
-      // 2. Upload and register initial drawing
+      // 2. Create project metadata document
+      setUploadStatus('Creating project metadata...');
+      const projectId = await createProject(projectName.trim(), description.trim(), userId, kmlData);
+
+      // 3. Upload and register initial drawing
       setUploadStatus('Uploading drawing blueprint (PNG/JPG/PDF)...');
       const drawingPath = `projects/${projectId}/drawings/${Date.now()}_${drawingFile.name}`;
       const drawingUrl = await uploadFile(drawingPath, drawingFile);
@@ -125,47 +152,92 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
       </div>
 
       {/* File Upload Section */}
-      <div className="p-4 border border-slate-200 dark:border-slate-800 rounded bg-slate-50 dark:bg-slate-950/40 relative">
-        <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase mb-2">
-          2D Drawing Blueprint (PNG / JPG / PDF) *
-        </label>
-        <input
-          ref={drawingInputRef}
-          type="file"
-          accept="image/*,application/pdf"
-          onChange={handleDrawingChange}
-          className="hidden"
-          disabled={submitting}
-        />
-        {drawingFile ? (
-          <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2 rounded border border-emerald-200 dark:border-emerald-900/30">
-            <div className="flex items-center gap-2 truncate">
-              <FileText className="h-4 w-4 text-emerald-600 shrink-0" />
-              <span className="text-[11px] text-slate-700 dark:text-slate-300 truncate font-medium">
-                {drawingFile.name}
-              </span>
+      <div className="space-y-4">
+        <div className="p-4 border border-slate-200 dark:border-slate-800 rounded bg-slate-50 dark:bg-slate-950/40 relative">
+          <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase mb-2">
+            2D Drawing Blueprint (PNG / JPG / PDF) *
+          </label>
+          <input
+            ref={drawingInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={handleDrawingChange}
+            className="hidden"
+            disabled={submitting}
+          />
+          {drawingFile ? (
+            <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2 rounded border border-emerald-200 dark:border-emerald-900/30">
+              <div className="flex items-center gap-2 truncate">
+                <FileText className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span className="text-[11px] text-slate-700 dark:text-slate-300 truncate font-medium">
+                  {drawingFile.name}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDrawingFile(null)}
+                disabled={submitting}
+                className="text-slate-400 hover:text-red-500 text-xs font-semibold px-1 py-0.5 cursor-pointer"
+              >
+                Clear
+              </button>
             </div>
+          ) : (
             <button
               type="button"
-              onClick={() => setDrawingFile(null)}
+              onClick={() => drawingInputRef.current?.click()}
               disabled={submitting}
-              className="text-slate-400 hover:text-red-500 text-xs font-semibold px-1 py-0.5 cursor-pointer"
+              className="w-full h-24 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-slate-800 rounded hover:border-blue-400 hover:bg-white dark:hover:bg-slate-900 hover:text-blue-500 text-slate-400 transition cursor-pointer"
             >
-              Clear
+              <UploadCloud className="h-6 w-6 mb-1 text-slate-400" />
+              <span className="text-xs font-semibold text-slate-600">Select Site Drawing</span>
+              <span className="text-[9px] text-slate-400">Max size 50MB</span>
             </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => drawingInputRef.current?.click()}
+          )}
+        </div>
+
+        <div className="p-4 border border-slate-200 dark:border-slate-800 rounded bg-slate-50 dark:bg-slate-950/40 relative">
+          <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase mb-2">
+            Site Map Overlay (KML) - Optional
+          </label>
+          <input
+            ref={kmlInputRef}
+            type="file"
+            accept=".kml"
+            onChange={handleKmlChange}
+            className="hidden"
             disabled={submitting}
-            className="w-full h-24 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-slate-800 rounded hover:border-blue-400 hover:bg-white dark:hover:bg-slate-900 hover:text-blue-500 text-slate-400 transition cursor-pointer"
-          >
-            <UploadCloud className="h-6 w-6 mb-1 text-slate-400" />
-            <span className="text-xs font-semibold text-slate-600">Select Site Drawing</span>
-            <span className="text-[9px] text-slate-400">Max size 50MB</span>
-          </button>
-        )}
+          />
+          {kmlFile ? (
+            <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2 rounded border border-emerald-200 dark:border-emerald-900/30">
+              <div className="flex items-center gap-2 truncate">
+                <FileText className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span className="text-[11px] text-slate-700 dark:text-slate-300 truncate font-medium">
+                  {kmlFile.name}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setKmlFile(null)}
+                disabled={submitting}
+                className="text-slate-400 hover:text-red-500 text-xs font-semibold px-1 py-0.5 cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => kmlInputRef.current?.click()}
+              disabled={submitting}
+              className="w-full h-20 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-slate-800 rounded hover:border-amber-400 hover:bg-white dark:hover:bg-slate-900 hover:text-amber-500 text-slate-400 transition cursor-pointer"
+            >
+              <UploadCloud className="h-5 w-5 mb-1 text-slate-400" />
+              <span className="text-xs font-semibold text-slate-600">Select KML Map File</span>
+              <span className="text-[9px] text-slate-400">Max size 10MB</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Submission Status */}
