@@ -5,8 +5,9 @@ import { EvidencePhoto } from '../types';
 
 interface EvidencePhotoUploadProps {
   projectId: string;
-  drawingId: string;
+  drawingId?: string;
   markId: string;
+  storagePathPrefix?: string;
   onUploadComplete: (uploadedPhotos: EvidencePhoto[]) => void;
 }
 
@@ -14,6 +15,7 @@ export const EvidencePhotoUpload: React.FC<EvidencePhotoUploadProps> = ({
   projectId,
   drawingId,
   markId,
+  storagePathPrefix,
   onUploadComplete
 }) => {
   const [uploading, setUploading] = useState(false);
@@ -36,7 +38,9 @@ export const EvidencePhotoUpload: React.FC<EvidencePhotoUploadProps> = ({
         const uniqueId = Math.random().toString(36).substring(2, 11);
         const fileExtension = file.name.split('.').pop() || 'jpg';
         // Unique path in storage to avoid name conflicts
-        const storagePath = `projects/${projectId}/drawings/${drawingId}/marks/${markId}/evidence/${uniqueId}_${Date.now()}.${fileExtension}`;
+        const storagePath = storagePathPrefix
+          ? `${storagePathPrefix}/${uniqueId}_${Date.now()}.${fileExtension}`
+          : `projects/${projectId}/drawings/${drawingId}/marks/${markId}/evidence/${uniqueId}_${Date.now()}.${fileExtension}`;
         
         const downloadUrl = await uploadFile(storagePath, file);
         newPhotos.push({

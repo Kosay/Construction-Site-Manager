@@ -20,6 +20,8 @@ import { Project, Drawing, Model, Mark } from './types';
 import { DrawingViewer } from './components/DrawingViewer';
 import { ProjectForm } from './components/ProjectForm';
 import { ShareLinkGenerator } from './components/ShareLinkGenerator';
+import { ModelViewer } from './components/ModelViewer';
+import { MapViewer } from './components/MapViewer';
 import { signInAnonymously, updateProfile } from 'firebase/auth';
 import { auth } from './lib/firebase';
 import { 
@@ -62,7 +64,7 @@ function MainAppContent() {
 
   // Navigation states
   const [viewState, setViewState] = useState<'dashboard' | 'workspace' | 'create-project'>('dashboard');
-  const [workspaceMode, setWorkspaceMode] = useState<'2d' | '3d'>('2d');
+  const [workspaceMode, setWorkspaceMode] = useState<'2d' | '3d' | 'map'>('2d');
   const [showShareManager, setShowShareManager] = useState(false);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
@@ -768,7 +770,7 @@ function MainAppContent() {
           {/* IMAGE DRAWING VIEWPORT & MARK OVERLAY */}
           <div className="flex flex-col overflow-hidden h-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 shrink-0">
-              {/* Left Side: 2D/3D Mode Selector */}
+              {/* Left Side: 2D/3D/Map Mode Selector */}
               <div className="flex items-center gap-1.5 bg-slate-200/60 dark:bg-slate-900/60 p-0.5 rounded-lg border border-slate-200/50 dark:border-slate-800">
                 <button
                   onClick={() => setWorkspaceMode('2d')}
@@ -799,6 +801,21 @@ function MainAppContent() {
                 >
                   <Box className="h-3.5 w-3.5" />
                   <span>3D BIM Model {models.length === 0 ? '(Inactive)' : ''}</span>
+                </button>
+                <button
+                  onClick={() => setWorkspaceMode('map')}
+                  disabled={!activeProject?.kmlUrl}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold transition ${
+                    !activeProject?.kmlUrl
+                      ? 'opacity-50 cursor-not-allowed text-slate-400 dark:text-slate-600'
+                      : workspaceMode === 'map'
+                      ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200/10 cursor-pointer'
+                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 cursor-pointer'
+                  }`}
+                  title={!activeProject?.kmlUrl ? 'No KML site map uploaded yet' : 'Switch to Map View'}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  <span>Site Map {!activeProject?.kmlUrl ? '(Inactive)' : ''}</span>
                 </button>
               </div>
 
@@ -869,32 +886,16 @@ function MainAppContent() {
 
             {/* Viewport Render Area */}
             <div className="flex-1 min-h-[250px] overflow-hidden relative bg-slate-50 dark:bg-slate-950">
-              {workspaceMode === '3d' && activeModel ? (
-                <div className="w-full h-full relative flex flex-col bg-slate-900">
-                  <model-viewer
-                    id="glb-viewer"
-                    src={activeModel.url}
-                    camera-controls
-                    autoplay
-                    auto-rotate
-                    style={{ width: '100%', height: '100%' }}
-                  >
-                  </model-viewer>
-                  
-                  {/* Floating overlay with model details */}
-                  <div className="absolute bottom-4 left-4 bg-slate-900/90 backdrop-blur border border-slate-700/50 rounded-lg p-3 text-xs font-sans text-left space-y-1 shadow-lg max-w-sm">
-                    <div className="flex items-center gap-1.5 text-blue-400 font-bold uppercase tracking-wider text-[10px]">
-                      <Box className="h-3.5 w-3.5" />
-                      <span>3D BIM Environment</span>
-                    </div>
-                    <div className="text-white font-medium truncate">
-                      File: {activeModel.fileName}
-                    </div>
-                    <div className="text-[10px] text-slate-400">
-                      Uploaded: {activeModel.uploadedAt?.toDate ? activeModel.uploadedAt.toDate().toLocaleDateString() : 'Recent'}
-                    </div>
-                  </div>
-                </div>
+              {workspaceMode === 'map' && activeProject ? (
+                <MapViewer
+                  projectId={activeProject.id}
+                  kmlUrl={activeProject.kmlUrl}
+                  kmlFileName={activeProject.kmlFileName}
+                  canEdit={!isShareView || guestCanEdit}
+                  shareToken={shareToken || undefined}
+                />
+              ) : workspaceMode === '3d' && activeModel ? (
+                <ModelViewer url={activeModel.url} fileName={activeModel.fileName} />
               ) : activeDrawing && activeProject ? (
                 <DrawingViewer
                   projectId={activeProject.id}
