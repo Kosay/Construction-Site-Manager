@@ -14,7 +14,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
-import { Project, Drawing, Model, Mark, ShareLink, EvidencePhoto } from '../types';
+import { Project, Drawing, Model, Mark, ShareLink, EvidencePhoto, MapPoint } from '../types';
 
 // Helper to generate a unique token
 export function generateToken(): string {
@@ -24,16 +24,26 @@ export function generateToken(): string {
 /**
  * Creates a new project in Firestore
  */
-export async function createProject(projectName: string, description: string, userId: string): Promise<string> {
+export async function createProject(
+  projectName: string,
+  description: string,
+  userId: string,
+  kml?: { url: string; fileName: string } | null
+): Promise<string> {
   const path = 'projects';
   try {
     const projectRef = doc(collection(db, path));
-    await setDoc(projectRef, {
+    const payload: any = {
       projectName,
       description,
       createdBy: userId,
       createdAt: serverTimestamp(),
-    });
+    };
+    if (kml) {
+      payload.kmlUrl = kml.url;
+      payload.kmlFileName = kml.fileName;
+    }
+    await setDoc(projectRef, payload);
     return projectRef.id;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
@@ -80,12 +90,19 @@ export async function deleteProject(projectId: string): Promise<void> {
 
     // 4. Delete all members under projects/${projectId}/members
     const membersSnap = await getDocs(collection(db, 'projects', projectId, 'members'));
-    const deleteMemberPromises = membersSnap.docs.map((memberDoc) => 
+    const deleteMemberPromises = membersSnap.docs.map((memberDoc) =>
       deleteDoc(doc(db, 'projects', projectId, 'members', memberDoc.id))
     );
     await Promise.all(deleteMemberPromises);
 
-    // 5. Finally, delete the parent project document itself
+    // 5. Delete all map points under projects/${projectId}/mapPoints
+    const mapPointsSnap = await getDocs(collection(db, 'projects', projectId, 'mapPoints'));
+    const deleteMapPointPromises = mapPointsSnap.docs.map((pointDoc) =>
+      deleteDoc(doc(db, 'projects', projectId, 'mapPoints', pointDoc.id))
+    );
+    await Promise.all(deleteMapPointPromises);
+
+    // 6. Finally, delete the parent project document itself
     await deleteDoc(doc(db, 'projects', projectId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
@@ -285,6 +302,91 @@ export async function getMarks(projectId: string, drawingId: string): Promise<Ma
     return marks;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
+// ------------------------------------------------------------------
+// MAP POINTS (KML site-map annotations)
+// ------------------------------------------------------------------
+
+/**
+ * Adds a geolocated point to a project's site map
+ */
+export async function addMapPoint(
+  projectId: string,
+  pointData: Omit<MapPoint, 'id' | 'createdAt'>,
+  shareToken?: string
+): Promise<string> {
+  const path = `projects/${projectId}/mapPoints`;
+  try {
+    const pointRef = doc(collection(db, 'projects', projectId, 'mapPoints'));
+
+    const payload: any = {
+      lat: pointData.lat,
+      lng: pointData.lng,
+      label: pointData.label,
+      createdBy: pointData.createdBy,
+      createdAt: serverTimestamp(),
+      evidencePhotos: pointData.evidencePhotos,
+    };
+
+    if (pointData.category) payload.category = pointData.category;
+    if (pointData.createdByName) payload.createdByName = pointData.createdByName;
+    if (shareToken) payload.shareToken = shareToken;
+
+    await setDoc(pointRef, payload);
+    return pointRef.id;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+}
+
+/**
+ * Fetches all map points for a project
+ */
+export async function getMapPoints(projectId: string): Promise<MapPoint[]> {
+  const path = `projects/${projectId}/mapPoints`;
+  try {
+    const querySnapshot = await getDocs(collection(db, 'projects', projectId, 'mapPoints'));
+    const points: MapPoint[] = [];
+    querySnapshot.forEach((docSnap) => {
+      points.push({ id: docSnap.id, ...docSnap.data() } as MapPoint);
+    });
+    return points;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
+/**
+ * Updates a map point's details or evidence photos
+ */
+export async function updateMapPoint(
+  projectId: string,
+  pointId: string,
+  updates: Partial<MapPoint>,
+  shareToken?: string
+): Promise<void> {
+  const path = `projects/${projectId}/mapPoints/${pointId}`;
+  try {
+    const pointRef = doc(db, 'projects', projectId, 'mapPoints', pointId);
+    const payload: any = { ...updates };
+    if (shareToken) payload.shareToken = shareToken;
+    await updateDoc(pointRef, payload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+/**
+ * Deletes a map point from a project
+ */
+export async function deleteMapPoint(projectId: string, pointId: string): Promise<void> {
+  const path = `projects/${projectId}/mapPoints/${pointId}`;
+  try {
+    await deleteDoc(doc(db, 'projects', projectId, 'mapPoints', pointId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
 

@@ -258,8 +258,13 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
         // Load document with a highly robust strategy to bypass CORS and range request errors
         let loadingTask;
         try {
-          console.log("Attempting standard fetch of PDF to bypass CORS/Range restrictions:", drawingUrl);
-          const response = await fetch(drawingUrl);
+          const isExternalUrl = drawingUrl.startsWith('http://') || drawingUrl.startsWith('https://');
+          const targetUrl = isExternalUrl 
+            ? `/api/proxy-pdf?url=${encodeURIComponent(drawingUrl)}` 
+            : drawingUrl;
+
+          console.log("Attempting PDF fetch via proxy/CORS bypass:", targetUrl);
+          const response = await fetch(targetUrl);
           if (!response.ok) {
             throw new Error(`HTTP fetch failed with status: ${response.status}`);
           }
