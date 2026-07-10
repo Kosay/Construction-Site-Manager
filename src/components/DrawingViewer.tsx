@@ -852,7 +852,7 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
 
         {/* Main Drawing Image Container */}
         <div className="flex-1 h-full relative overflow-auto flex items-center justify-center p-4">
-          
+
           {isPdf && pdfRenderLoading && (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-100/60 dark:bg-slate-950/60 backdrop-blur-xs">
               <Loader2 className="h-8 w-8 text-blue-500 animate-spin mb-2" />
@@ -874,17 +874,21 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
             ref={containerRef}
             onMouseDown={handleMouseDown}
             onDragStart={(e) => e.preventDefault()}
-            className={`relative max-w-full shadow-md rounded overflow-hidden border border-slate-300 dark:border-slate-800 select-none ${
+            className={`relative max-w-full shadow-md rounded overflow-hidden border border-slate-300 dark:border-slate-800 select-none transition-transform duration-200 ${
               activeTool !== 'select' && canEdit ? 'cursor-crosshair border-emerald-500 ring-2 ring-emerald-500/20' : ''
             }`}
-            style={{ width: 'fit-content', height: 'fit-content' }}
+            style={{
+              width: 'fit-content',
+              height: 'fit-content',
+              transform: `scale(${zoomScale})`,
+              transformOrigin: 'center center'
+            }}
           >
             {/* Main Construction Photo / Canvas */}
             {isPdf ? (
               <canvas
                 ref={pdfCanvasRef}
-                className="w-auto block object-contain pointer-events-none transition-all duration-200"
-                style={{ maxHeight: isFullPage ? `${85 * zoomScale}vh` : `${70 * zoomScale}vh` }}
+                className="w-auto block object-contain pointer-events-none"
               />
             ) : (
               <img
@@ -892,8 +896,7 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
                 src={drawingUrl}
                 alt={drawingName}
                 referrerPolicy="no-referrer"
-                className="w-auto block object-contain pointer-events-none transition-all duration-200"
-                style={{ maxHeight: isFullPage ? `${85 * zoomScale}vh` : `${70 * zoomScale}vh` }}
+                className="w-auto block object-contain pointer-events-none"
                 onLoad={() => onUpdate()} // trigger update on load to handle coordinates
               />
             )}
@@ -902,6 +905,7 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
             <svg
               className="absolute inset-0 w-full h-full"
               style={{ pointerEvents: activeTool === 'select' ? 'auto' : 'none' }}
+              preserveAspectRatio="none"
             >
               {marks.map((mark) => {
                 const isMatched = filteredMarks.some(m => m.id === mark.id);
