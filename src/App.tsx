@@ -22,29 +22,30 @@ import { ProjectForm } from './components/ProjectForm';
 import { ShareLinkGenerator } from './components/ShareLinkGenerator';
 import { ModelViewer } from './components/ModelViewer';
 import { MapViewer } from './components/MapViewer';
+import { AuthPage } from './components/AuthPage';
 import { signInAnonymously, updateProfile } from 'firebase/auth';
 import { auth } from './lib/firebase';
-import { 
-  LogOut, 
-  ChevronLeft, 
-  Plus, 
-  UploadCloud, 
-  Layers, 
-  Box, 
-  Image as ImageIcon, 
-  Share2, 
-  Settings, 
-  Construction, 
-  Globe, 
-  User, 
-  Check, 
-  Loader2, 
+import {
+  LogOut,
+  ChevronLeft,
+  Plus,
+  UploadCloud,
+  Layers,
+  Box,
+  Image as ImageIcon,
+  Share2,
+  Settings,
+  User,
+  Check,
+  Loader2,
   AlertCircle,
-  Trash2
+  Trash2,
+  Construction,
+  Globe
 } from 'lucide-react';
 
 function MainAppContent() {
-  const { user, loading: authLoading, loginWithGoogle, logout } = useAuth();
+  const { user, loading: authLoading, logout } = useAuth();
   
   // Routing / Path States
   const [shareToken, setShareToken] = useState<string | null>(null);
@@ -385,47 +386,7 @@ function MainAppContent() {
   // RENDER: Auth Login Gate (Admins)
   // ------------------------------------------------------------------
   if (!user && !isShareView) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl" />
-        
-        <div className="w-full max-w-md bg-slate-900/40 backdrop-blur-md border border-slate-800/80 p-8 rounded-2xl shadow-2xl relative">
-          
-          <div className="text-center space-y-3 mb-8">
-            <div className="h-14 w-14 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
-              <Construction className="h-7 w-7 animate-pulse" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white tracking-tight">Site Works Manager</h1>
-              <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                Securely manage project plans and interactive geometric annotations.
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={loginWithGoogle}
-            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm transition hover:scale-[1.02] cursor-pointer shadow-lg flex items-center justify-center gap-2"
-          >
-            <Globe className="h-5 w-5" />
-            Sign in with Google Account
-          </button>
-
-          <div className="mt-6 border-t border-slate-800/60 pt-4 text-center space-y-1">
-            <div className="text-[10px] font-mono text-slate-500">
-              SECURE SECRETS AUTHENTICATION LAYER ACTIVE
-            </div>
-            <div className="text-[10px] text-slate-400 font-sans mt-2">
-              Created by <span className="font-semibold text-slate-300">Eng. Kosay Hatem</span> • <a href="mailto:kosay-h@hotmail.com" className="hover:underline hover:text-blue-400">kosay-h@hotmail.com</a>
-            </div>
-            <div className="text-[9px] text-slate-500">
-              +971-566371160
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <AuthPage />;
   }
 
   // ------------------------------------------------------------------

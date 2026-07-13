@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Calendar, User, Eye, Trash2, Image as ImageIcon, Save, Loader2, ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import { X, Calendar, User, Eye, Trash2, Image as ImageIcon, Save, Loader2, ArrowLeft, ArrowRight, Check, MapPin } from 'lucide-react';
 import { Mark, EvidencePhoto } from '../types';
 import { EvidencePhotoUpload } from './EvidencePhotoUpload';
 import { updateMark, deleteMark } from '../lib/firestore';
@@ -385,12 +385,37 @@ export const MarkDetailsModal: React.FC<MarkDetailsModalProps> = ({
                   <span>
                     Logged On:{' '}
                     <strong className="text-slate-800 dark:text-slate-200">
-                      {mark.createdAt?.toDate 
-                        ? mark.createdAt.toDate().toLocaleString() 
+                      {mark.createdAt?.toDate
+                        ? mark.createdAt.toDate().toLocaleString()
                         : new Date(mark.createdAt).toLocaleString()}
                     </strong>
                   </span>
                 </div>
+
+                {/* GPS Metadata */}
+                {mark.metadata?.gpsLat !== undefined && mark.metadata?.gpsLng !== undefined && (
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 space-y-1.5">
+                    <div className="flex items-start gap-2">
+                      <MapPin className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">GPS Location</p>
+                        <p className="text-slate-800 dark:text-slate-200 font-mono text-[10px]">
+                          {mark.metadata.gpsLat?.toFixed(6)}, {mark.metadata.gpsLng?.toFixed(6)}
+                        </p>
+                        {mark.metadata.gpsAccuracy && (
+                          <p className="text-slate-600 dark:text-slate-400 text-[10px]">
+                            Accuracy: ±{Math.round(mark.metadata.gpsAccuracy)}m
+                          </p>
+                        )}
+                        {mark.metadata.deviceInfo && (
+                          <p className="text-slate-600 dark:text-slate-400 text-[10px]">
+                            Device: {mark.metadata.deviceInfo === 'mobile' ? '📱 Mobile' : '💻 Desktop'}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

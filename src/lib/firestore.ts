@@ -1,20 +1,20 @@
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where, 
-  orderBy, 
+import {
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
   serverTimestamp,
   Timestamp
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
-import { Project, Drawing, Model, Mark, ShareLink, EvidencePhoto, MapPoint } from '../types';
+import { Project, Drawing, Model, Mark, ShareLink, EvidencePhoto, MapPoint, CalibrationPoint } from '../types';
 
 // Helper to generate a unique token
 export function generateToken(): string {
@@ -28,7 +28,8 @@ export async function createProject(
   projectName: string,
   description: string,
   userId: string,
-  kml?: { url: string; fileName: string } | null
+  kml?: { url: string; fileName: string } | null,
+  calibrationPoints?: CalibrationPoint[] | null
 ): Promise<string> {
   const path = 'projects';
   try {
@@ -42,6 +43,9 @@ export async function createProject(
     if (kml) {
       payload.kmlUrl = kml.url;
       payload.kmlFileName = kml.fileName;
+    }
+    if (calibrationPoints && calibrationPoints.length > 0) {
+      payload.calibrationPoints = calibrationPoints;
     }
     await setDoc(projectRef, payload);
     return projectRef.id;
@@ -213,15 +217,15 @@ export async function getModels(projectId: string): Promise<Model[]> {
  * Adds a geometric mark to a drawing
  */
 export async function addMark(
-  projectId: string, 
-  drawingId: string, 
-  markData: Omit<Mark, 'id' | 'createdAt'>, 
+  projectId: string,
+  drawingId: string,
+  markData: Omit<Mark, 'id' | 'createdAt'>,
   shareToken?: string
 ): Promise<string> {
   const path = `projects/${projectId}/drawings/${drawingId}/marks`;
   try {
     const markRef = doc(collection(db, 'projects', projectId, 'drawings', drawingId, 'marks'));
-    
+
     // Construct payload. If shareToken is provided, store it so security rules can validate it
     const payload: any = {
       type: markData.type,
@@ -238,6 +242,10 @@ export async function addMark(
 
     if (markData.createdByName) {
       payload.createdByName = markData.createdByName;
+    }
+
+    if (markData.metadata) {
+      payload.metadata = markData.metadata;
     }
 
     if (shareToken) {
@@ -332,6 +340,7 @@ export async function addMapPoint(
 
     if (pointData.category) payload.category = pointData.category;
     if (pointData.createdByName) payload.createdByName = pointData.createdByName;
+    if (pointData.metadata) payload.metadata = pointData.metadata;
     if (shareToken) payload.shareToken = shareToken;
 
     await setDoc(pointRef, payload);

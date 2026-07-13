@@ -2,6 +2,8 @@ import React, { useState, useRef } from 'react';
 import { LayoutGrid, FileText, UploadCloud, Check, AlertCircle, Loader2 } from 'lucide-react';
 import { uploadFile } from '../lib/storage';
 import { createProject, addDrawing } from '../lib/firestore';
+import { CalibrationPointSetup } from './CalibrationPointSetup';
+import { CalibrationPoint } from '../types';
 
 interface ProjectFormProps {
   userId: string;
@@ -22,6 +24,13 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
   const [uploadStatus, setUploadStatus] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
+  // Calibration state
+  const [showCalibrationModal, setShowCalibrationModal] = useState(false);
+  const [calibrationDrawingUrl, setCalibrationDrawingUrl] = useState<string>('');
+  const [calibrationPoints, setCalibrationPoints] = useState<CalibrationPoint[]>([]);
+  const [kmlData, setKmlData] = useState<{ url: string; fileName: string } | null>(null);
+  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
+
   const drawingInputRef = useRef<HTMLInputElement>(null);
   const kmlInputRef = useRef<HTMLInputElement>(null);
 
@@ -30,10 +39,17 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
       const file = e.target.files[0];
       const isImage = file.type.startsWith('image/');
       const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-      if (!isImage && !isPdf) {
-        setError('Drawings must be a .png, .jpg, .jpeg or .pdf file.');
+
+      if (isPdf) {
+        setError('PDF drawings are not supported for calibration at this time. Please use PNG or JPG instead.');
         return;
       }
+
+      if (!isImage) {
+        setError('Drawings must be a .png, .jpg, or .jpeg file.');
+        return;
+      }
+
       if (file.size > 50 * 1024 * 1024) {
         setError('Drawing blueprint exceeds the 50MB limit.');
         return;
@@ -75,25 +91,65 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
 
     try {
       // 1. Prepare KML data if file exists
-      let kmlData = null;
+      let preparedKmlData = null;
       if (kmlFile) {
         setUploadStatus('Uploading site map (KML)...');
         const kmlPath = `projects/${Date.now()}_${kmlFile.name}`;
         const kmlUrl = await uploadFile(kmlPath, kmlFile);
-        kmlData = { url: kmlUrl, fileName: kmlFile.name };
+        preparedKmlData = { url: kmlUrl, fileName: kmlFile.name };
       }
 
-      // 2. Create project metadata document
-      setUploadStatus('Creating project metadata...');
-      const projectId = await createProject(projectName.trim(), description.trim(), userId, kmlData);
+      // 2. Create a temporary URL for the drawing for calibration
+      setUploadStatus('Preparing drawing for calibration...');
+      const drawingUrl = URL.createObjectURL(drawingFile);
 
-      // 3. Upload and register initial drawing
+      // 3. Store KML data and show calibration modal
+      setKmlData(preparedKmlData);
+      setCalibrationDrawingUrl(drawingUrl);
+      setShowCalibrationModal(true);
+      setSubmitting(false);
+
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'An error occurred during project setup.');
+      setSubmitting(false);
+    }
+  };
+
+  const handleCalibrationComplete = async (points: CalibrationPoint[]) => {
+    setShowCalibrationModal(false);
+    setCalibrationPoints(points);
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      // 1. Create project metadata document with calibration points (skip if already created on retry)
+      let projectId = createdProjectId;
+      if (!projectId) {
+        setUploadStatus('Creating project with calibration points...');
+        projectId = await createProject(
+          projectName.trim(),
+          description.trim(),
+          userId,
+          kmlData,
+          points
+        );
+        setCreatedProjectId(projectId);
+      }
+
+      // 2. Upload and register initial drawing
       setUploadStatus('Uploading drawing blueprint (PNG/JPG/PDF)...');
-      const drawingPath = `projects/${projectId}/drawings/${Date.now()}_${drawingFile.name}`;
-      const drawingUrl = await uploadFile(drawingPath, drawingFile);
-      await addDrawing(projectId, drawingFile.name, drawingUrl);
+      const drawingPath = `projects/${projectId}/drawings/${Date.now()}_${drawingFile?.name}`;
+      const drawingUrl = await uploadFile(drawingPath, drawingFile!);
+      await addDrawing(projectId, drawingFile!.name, drawingUrl);
 
       setUploadStatus('Project created successfully!');
+
+      // Clean up temporary Blob URL
+      if (calibrationDrawingUrl) {
+        URL.revokeObjectURL(calibrationDrawingUrl);
+      }
+
       setTimeout(() => {
         onSuccess(projectId);
       }, 800);
@@ -101,13 +157,34 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'An error occurred during project creation.');
+      setShowCalibrationModal(true);
     } finally {
       setSubmitting(false);
     }
   };
 
+  const handleCalibrationCancel = () => {
+    if (calibrationDrawingUrl) {
+      URL.revokeObjectURL(calibrationDrawingUrl);
+    }
+    setShowCalibrationModal(false);
+    setCalibrationDrawingUrl('');
+    setCalibrationPoints([]);
+    setKmlData(null);
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-xl mx-auto bg-white dark:bg-slate-900 p-6 rounded border border-slate-200 dark:border-slate-800 shadow">
+    <>
+      {showCalibrationModal && (
+        <CalibrationPointSetup
+          drawingUrl={calibrationDrawingUrl}
+          initialPoints={calibrationPoints}
+          onCalibrationComplete={handleCalibrationComplete}
+          onCancel={handleCalibrationCancel}
+        />
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-6 max-w-xl mx-auto bg-white dark:bg-slate-900 p-6 rounded border border-slate-200 dark:border-slate-800 shadow">
       <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-4">
         <LayoutGrid className="h-5 w-5 text-blue-600" />
         <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Deploy Construction Workspace</h3>
@@ -277,5 +354,6 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
         </button>
       </div>
     </form>
+    </>
   );
 };
