@@ -14,7 +14,12 @@ interface ModelViewerProps {
  * replaces the previous CDN <model-viewer> web component that failed to load.
  */
 function Model({ url }: { url: string }) {
-  const { scene } = useGLTF(url);
+  const isExternalUrl = url.startsWith('http://') || url.startsWith('https://');
+  const targetUrl = isExternalUrl 
+    ? `/api/proxy-glb?url=${encodeURIComponent(url)}` 
+    : url;
+
+  const { scene } = useGLTF(targetUrl);
   return <primitive object={scene} />;
 }
 

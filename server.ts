@@ -37,6 +37,37 @@ async function startServer() {
     }
   });
 
+  // API Route to proxy GLB models and bypass browser CORS restrictions
+  app.get("/api/proxy-glb", async (req, res) => {
+    const glbUrl = req.query.url as string;
+    if (!glbUrl) {
+      return res.status(400).send("Missing url parameter");
+    }
+
+    try {
+      if (!glbUrl.startsWith("http://") && !glbUrl.startsWith("https://")) {
+        return res.status(400).send("Invalid url format");
+      }
+
+      console.log(`[Proxy] Fetching GLB from: ${glbUrl}`);
+      const response = await fetch(glbUrl);
+      if (!response.ok) {
+        return res.status(response.status).send(`Failed to fetch GLB: ${response.statusText}`);
+      }
+
+      const contentType = response.headers.get("content-type") || "model/gltf-binary";
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+
+      const arrayBuffer = await response.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    } catch (error: any) {
+      console.error("[Proxy Error] failed to load GLB:", error);
+      res.status(500).send(error.message || "Internal Server Error");
+    }
+  });
+
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
