@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Construction, Globe, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
+import { Construction, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../lib/authContext';
 
 export const AuthPage: React.FC = () => {
-  const { loginWithGoogle, signUpWithEmail, signInWithEmail } = useAuth();
+  const { signUpWithEmail, signInWithEmail } = useAuth();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,17 +40,6 @@ export const AuthPage: React.FC = () => {
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      await loginWithGoogle();
-    } catch (err) {
-      setError('Google Sign-In failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative">
@@ -194,25 +183,6 @@ export const AuthPage: React.FC = () => {
           </button>
         </form>
 
-        {/* Divider */}
-        <div className="relative mb-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-800/60" />
-          </div>
-          <div className="relative flex justify-center text-xs">
-            <span className="px-2 bg-slate-900/40 text-slate-500">or continue with</span>
-          </div>
-        </div>
-
-        {/* Google Sign-In */}
-        <button
-          onClick={handleGoogleLogin}
-          disabled={loading}
-          className="w-full py-2.5 px-4 bg-slate-800/60 hover:bg-slate-700/60 border border-slate-800 text-white rounded-lg font-bold text-sm transition hover:scale-[1.02] cursor-pointer shadow-lg flex items-center justify-center gap-2 disabled:opacity-60"
-        >
-          <Globe className="h-4 w-4" />
-          Sign in with Google
-        </button>
 
         {/* Footer */}
         <div className="mt-8 border-t border-slate-800/60 pt-4 text-center space-y-1">
