@@ -119,13 +119,13 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
       setNewCategory('general');
     };
 
-    map.addListener('click', handleClick);
+    const listener = map.addListener('click', handleClick);
     if (mapContainerRef.current && !pendingLatLng) {
       mapContainerRef.current.style.cursor = 'crosshair';
     }
 
     return () => {
-      google.maps.event.removeListener;
+      listener.remove();
     };
   }, [map, addMode, canEdit, gpsLoading, pendingLatLng]);
 

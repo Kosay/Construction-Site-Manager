@@ -139,6 +139,13 @@ export function validateCalibrationPoints(
     return { valid: false, error: 'Need at least 3 calibration points' };
   }
 
+  // Check for uninitialized GPS coordinates (0, 0)
+  for (let i = 0; i < points.length; i++) {
+    if (points[i].gpsLat === 0 && points[i].gpsLng === 0) {
+      return { valid: false, error: `Point ${i + 1} has uninitialized GPS coordinates. Please set GPS location for all points.` };
+    }
+  }
+
   // Check for duplicates
   const uniquePoints = new Set(points.map(p => `${p.gpsLat},${p.gpsLng}`));
   if (uniquePoints.size < 3) {
@@ -199,6 +206,10 @@ export function estimateRequiredAccuracy(
       totalDistance += dist;
       count++;
     }
+  }
+
+  if (count === 0 || totalDistance === 0) {
+    return 10; // default fallback
   }
 
   const avgDistance = totalDistance / count;

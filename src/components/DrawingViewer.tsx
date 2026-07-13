@@ -499,33 +499,6 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
           metadata.gpsLat = latitude;
           metadata.gpsLng = longitude;
           metadata.gpsAccuracy = accuracy;
-
-          // If project has calibration points, transform GPS to drawing coordinates
-          if (project?.calibrationPoints && project.calibrationPoints.length === 3) {
-            const matrix = calculateTransformMatrix(project.calibrationPoints);
-            if (matrix) {
-              const transformed = gpsToDrawingCoordinates(latitude, longitude, matrix);
-              if (transformed) {
-                // For circle/rectangle, use transformed center
-                if (newMarkType === 'circle' || newMarkType === 'rectangle') {
-                  finalCoords = {
-                    ...newMarkCoords,
-                    x: transformed.x,
-                    y: transformed.y
-                  };
-                } else if (newMarkType === 'line') {
-                  // For lines, transform both endpoints
-                  finalCoords = {
-                    ...newMarkCoords,
-                    x: transformed.x,
-                    y: transformed.y,
-                    x2: newMarkCoords.x2 ?? transformed.x,
-                    y2: newMarkCoords.y2 ?? transformed.y
-                  };
-                }
-              }
-            }
-          }
         }
       } catch (gpsErr) {
         // GPS capture failed, continue with manual coordinates

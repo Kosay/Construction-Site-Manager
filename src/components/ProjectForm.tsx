@@ -38,10 +38,17 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
       const file = e.target.files[0];
       const isImage = file.type.startsWith('image/');
       const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-      if (!isImage && !isPdf) {
-        setError('Drawings must be a .png, .jpg, .jpeg or .pdf file.');
+
+      if (isPdf) {
+        setError('PDF drawings are not supported for calibration at this time. Please use PNG or JPG instead.');
         return;
       }
+
+      if (!isImage) {
+        setError('Drawings must be a .png, .jpg, or .jpeg file.');
+        return;
+      }
+
       if (file.size > 50 * 1024 * 1024) {
         setError('Drawing blueprint exceeds the 50MB limit.');
         return;
@@ -132,6 +139,12 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
       await addDrawing(projectId, drawingFile!.name, drawingUrl);
 
       setUploadStatus('Project created successfully!');
+
+      // Clean up temporary Blob URL
+      if (calibrationDrawingUrl) {
+        URL.revokeObjectURL(calibrationDrawingUrl);
+      }
+
       setTimeout(() => {
         onSuccess(projectId);
       }, 800);
@@ -146,6 +159,9 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
   };
 
   const handleCalibrationCancel = () => {
+    if (calibrationDrawingUrl) {
+      URL.revokeObjectURL(calibrationDrawingUrl);
+    }
     setShowCalibrationModal(false);
     setCalibrationDrawingUrl('');
     setCalibrationPoints([]);

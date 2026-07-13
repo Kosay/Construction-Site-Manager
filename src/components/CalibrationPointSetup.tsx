@@ -88,7 +88,13 @@ export const CalibrationPointSetup: React.FC<CalibrationPointSetupProps> = ({
   const handleRemovePoint = (index: number) => {
     const updatedPoints = points.filter((_, i) => i !== index);
     setPoints(updatedPoints);
-    if (activePointIndex === index) setActivePointIndex(null);
+    if (activePointIndex === index) {
+      setActivePointIndex(null);
+    } else if (activePointIndex !== null && activePointIndex > index) {
+      setActivePointIndex(activePointIndex - 1);
+    } else if (activePointIndex !== null && activePointIndex >= updatedPoints.length) {
+      setActivePointIndex(null);
+    }
   };
 
   // Update point name
@@ -144,50 +150,52 @@ export const CalibrationPointSetup: React.FC<CalibrationPointSetupProps> = ({
               </h3>
               <div
                 ref={containerRef}
-                className="flex-1 bg-slate-100 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 overflow-auto relative"
+                className="flex-1 bg-slate-100 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 overflow-auto flex items-center justify-center"
               >
-                <img
-                  ref={imageRef}
-                  src={drawingUrl}
-                  alt="Drawing"
-                  className="w-auto h-auto object-contain cursor-crosshair"
-                  onClick={handleDrawingClick}
-                />
+                <div className="relative inline-block">
+                  <img
+                    ref={imageRef}
+                    src={drawingUrl}
+                    alt="Drawing"
+                    className="w-auto h-auto object-contain cursor-crosshair"
+                    onClick={handleDrawingClick}
+                  />
 
-                {/* Overlay points on drawing */}
-                <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                  {points.map((point, idx) => (
-                    <g key={idx}>
-                      <circle
-                        cx={`${point.drawingX}%`}
-                        cy={`${point.drawingY}%`}
-                        r="8"
-                        fill={activePointIndex === idx ? '#3b82f6' : '#ef4444'}
-                        opacity="0.8"
-                      />
-                      <circle
-                        cx={`${point.drawingX}%`}
-                        cy={`${point.drawingY}%`}
-                        r="8"
-                        fill="none"
-                        stroke="white"
-                        strokeWidth="2"
-                      />
-                      <text
-                        x={`${point.drawingX}%`}
-                        y={`${point.drawingY}%`}
-                        dy="0.3em"
-                        textAnchor="middle"
-                        fill="white"
-                        fontSize="10"
-                        fontWeight="bold"
-                        pointerEvents="none"
-                      >
-                        {idx + 1}
-                      </text>
-                    </g>
-                  ))}
-                </svg>
+                  {/* Overlay points on drawing */}
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                    {points.map((point, idx) => (
+                      <g key={idx}>
+                        <circle
+                          cx={`${point.drawingX}%`}
+                          cy={`${point.drawingY}%`}
+                          r="8"
+                          fill={activePointIndex === idx ? '#3b82f6' : '#ef4444'}
+                          opacity="0.8"
+                        />
+                        <circle
+                          cx={`${point.drawingX}%`}
+                          cy={`${point.drawingY}%`}
+                          r="8"
+                          fill="none"
+                          stroke="white"
+                          strokeWidth="2"
+                        />
+                        <text
+                          x={`${point.drawingX}%`}
+                          y={`${point.drawingY}%`}
+                          dy="0.3em"
+                          textAnchor="middle"
+                          fill="white"
+                          fontSize="10"
+                          fontWeight="bold"
+                          pointerEvents="none"
+                        >
+                          {idx + 1}
+                        </text>
+                      </g>
+                    ))}
+                  </svg>
+                </div>
               </div>
             </div>
 
