@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, MapPin, Trash2, Save, Loader2, Image as ImageIcon, ArrowLeft, ArrowRight } from 'lucide-react';
+import { X, MapPin, Trash2, Save, Loader2, Image as ImageIcon, ArrowLeft, ArrowRight, Calendar, User } from 'lucide-react';
 import { MapPoint, EvidencePhoto } from '../types';
 import { EvidencePhotoUpload } from './EvidencePhotoUpload';
 import { updateMapPoint, deleteMapPoint } from '../lib/firestore';
@@ -139,6 +139,46 @@ export const MapPointModal: React.FC<MapPointModalProps> = ({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Point metadata */}
+          <div className="space-y-2 p-3 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400">
+            {point.createdByName && (
+              <div className="flex items-center gap-2">
+                <User className="h-3.5 w-3.5 text-slate-400" />
+                <span>
+                  Created by: <strong className="text-slate-800 dark:text-slate-200">{point.createdByName}</strong>
+                </span>
+              </div>
+            )}
+
+            {point.createdAt && (
+              <div className="flex items-center gap-2">
+                <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                <span>
+                  <strong className="text-slate-800 dark:text-slate-200">
+                    {point.createdAt?.toDate
+                      ? point.createdAt.toDate().toLocaleString()
+                      : new Date(point.createdAt).toLocaleString()}
+                  </strong>
+                </span>
+              </div>
+            )}
+
+            {point.metadata?.gpsAccuracy && (
+              <div className="flex items-center gap-2 text-[10px]">
+                <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                <span>
+                  Accuracy: <strong className="text-slate-800 dark:text-slate-200">±{Math.round(point.metadata.gpsAccuracy)}m</strong>
+                </span>
+              </div>
+            )}
+
+            {point.metadata?.deviceInfo && (
+              <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                Device: {point.metadata.deviceInfo === 'mobile' ? '📱 Mobile' : '💻 Desktop'}
+              </div>
+            )}
           </div>
 
           {/* Evidence photos */}
