@@ -1,20 +1,20 @@
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where, 
-  orderBy, 
+import {
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
   serverTimestamp,
   Timestamp
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
-import { Project, Drawing, Model, Mark, ShareLink, EvidencePhoto, MapPoint } from '../types';
+import { Project, Drawing, Model, Mark, ShareLink, EvidencePhoto, MapPoint, CalibrationPoint } from '../types';
 
 // Helper to generate a unique token
 export function generateToken(): string {
@@ -28,7 +28,8 @@ export async function createProject(
   projectName: string,
   description: string,
   userId: string,
-  kml?: { url: string; fileName: string } | null
+  kml?: { url: string; fileName: string } | null,
+  calibrationPoints?: CalibrationPoint[] | null
 ): Promise<string> {
   const path = 'projects';
   try {
@@ -42,6 +43,9 @@ export async function createProject(
     if (kml) {
       payload.kmlUrl = kml.url;
       payload.kmlFileName = kml.fileName;
+    }
+    if (calibrationPoints && calibrationPoints.length > 0) {
+      payload.calibrationPoints = calibrationPoints;
     }
     await setDoc(projectRef, payload);
     return projectRef.id;

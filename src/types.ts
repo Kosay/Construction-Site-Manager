@@ -1,3 +1,12 @@
+export interface CalibrationPoint {
+  id: string;
+  name: string;
+  gpsLat: number;
+  gpsLng: number;
+  drawingX: number;  // percentage 0-100
+  drawingY: number;  // percentage 0-100
+}
+
 export interface Project {
   id: string;
   projectName: string;
@@ -6,6 +15,7 @@ export interface Project {
   createdAt: any; // Firestore Timestamp or string
   kmlUrl?: string;
   kmlFileName?: string;
+  calibrationPoints?: CalibrationPoint[];
 }
 
 export interface Drawing {
@@ -38,6 +48,14 @@ export interface MarkCoordinates {
   y2?: number;    // percentage end point y for lines
 }
 
+export interface MarkMetadata {
+  gpsLat?: number;
+  gpsLng?: number;
+  gpsAccuracy?: number;  // meters
+  timestamp: string;     // ISO 8601 timestamp
+  deviceInfo?: string;   // mobile/desktop identifier
+}
+
 export interface Mark {
   id: string;
   type: 'circle' | 'rectangle' | 'line';
@@ -49,6 +67,7 @@ export interface Mark {
   evidencePhotos: EvidencePhoto[];
   shareToken?: string; // optional token included to authorize edits in public share views
   category?: 'safety' | 'measurement' | 'defect' | 'general' | 'progress' | 'quality' | 'other';
+  metadata?: MarkMetadata;
 }
 
 export interface ShareLink {
