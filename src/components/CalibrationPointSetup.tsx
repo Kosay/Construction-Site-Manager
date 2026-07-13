@@ -46,6 +46,7 @@ export const CalibrationPointSetup: React.FC<CalibrationPointSetupProps> = ({
   // Request device GPS location
   const handleRequestGps = async (index: number) => {
     setGpsLoading(true);
+    const pointId = points[index]?.id;
     try {
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, {
@@ -55,14 +56,19 @@ export const CalibrationPointSetup: React.FC<CalibrationPointSetupProps> = ({
         });
       });
 
-      const updatedPoints = [...points];
-      updatedPoints[index] = {
-        ...updatedPoints[index],
-        gpsLat: position.coords.latitude,
-        gpsLng: position.coords.longitude
-      };
-      setPoints(updatedPoints);
-      setActivePointIndex(index);
+      setPoints(currentPoints => {
+        const updatedPoints = [...currentPoints];
+        const pointIndex = updatedPoints.findIndex(p => p.id === pointId);
+        if (pointIndex !== -1) {
+          updatedPoints[pointIndex] = {
+            ...updatedPoints[pointIndex],
+            gpsLat: position.coords.latitude,
+            gpsLng: position.coords.longitude
+          };
+          setActivePointIndex(pointIndex);
+        }
+        return updatedPoints;
+      });
     } catch (err) {
       alert(`GPS Error: ${err instanceof Error ? err.message : 'Unable to get location'}`);
     } finally {

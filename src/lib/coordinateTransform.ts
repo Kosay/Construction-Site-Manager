@@ -67,6 +67,12 @@ export function calculateTransformMatrix(
   const e = u1 - a * x1 - b * y1;
   const f = v1 - c * x1 - d * y1;
 
+  // Check if the transformation matrix is invertible (determinant != 0)
+  if (Math.abs(a * d - b * c) < 1e-10) {
+    console.warn('Transformation matrix is singular - drawing points are collinear');
+    return null;
+  }
+
   return { a, b, c, d, e, f };
 }
 
@@ -87,11 +93,15 @@ export function gpsToDrawingCoordinates(
   const drawingX = matrix.a * x + matrix.b * y + matrix.e;
   const drawingY = matrix.c * x + matrix.d * y + matrix.f;
 
-  // Clamp to valid drawing bounds (0-100%)
-  return {
-    x: Math.max(0, Math.min(100, drawingX)),
-    y: Math.max(0, Math.min(100, drawingY))
-  };
+  // Validate drawing coordinates are within bounds (0-100%)
+  if (
+    !Number.isFinite(drawingX) ||
+    !Number.isFinite(drawingY) ||
+    drawingX < 0 || drawingX > 100 ||
+    drawingY < 0 || drawingY > 100
+  ) return null;
+
+  return { x: drawingX, y: drawingY };
 }
 
 /**
@@ -135,13 +145,35 @@ export function drawingToGpsCoordinates(
 export function validateCalibrationPoints(
   points: CalibrationPoint[]
 ): { valid: boolean; error?: string } {
-  if (!points || points.length < 3) {
-    return { valid: false, error: 'Need at least 3 calibration points' };
+  if (!points || points.length !== 3) {
+    return { valid: false, error: 'Exactly 3 calibration points are required' };
   }
 
-  // Check for uninitialized GPS coordinates (0, 0)
+  // Validate each point's numeric fields
   for (let i = 0; i < points.length; i++) {
-    if (points[i].gpsLat === 0 && points[i].gpsLng === 0) {
+    const p = points[i];
+
+    // Check finite values
+    if (!Number.isFinite(p.gpsLat) || !Number.isFinite(p.gpsLng) || !Number.isFinite(p.drawingX) || !Number.isFinite(p.drawingY)) {
+      return { valid: false, error: `Point ${i + 1} has invalid numeric values` };
+    }
+
+    // Check GPS ranges
+    if (p.gpsLat < -90 || p.gpsLat > 90) {
+      return { valid: false, error: `Point ${i + 1} has invalid latitude (must be -90 to 90)` };
+    }
+
+    if (p.gpsLng < -180 || p.gpsLng > 180) {
+      return { valid: false, error: `Point ${i + 1} has invalid longitude (must be -180 to 180)` };
+    }
+
+    // Check drawing coordinate ranges
+    if (p.drawingX < 0 || p.drawingX > 100 || p.drawingY < 0 || p.drawingY > 100) {
+      return { valid: false, error: `Point ${i + 1} has drawing coordinates outside 0-100% range` };
+    }
+
+    // Check for uninitialized GPS coordinates (0, 0)
+    if (p.gpsLat === 0 && p.gpsLng === 0) {
       return { valid: false, error: `Point ${i + 1} has uninitialized GPS coordinates. Please set GPS location for all points.` };
     }
   }

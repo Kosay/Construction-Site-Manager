@@ -39,7 +39,9 @@ import {
   Check,
   Loader2,
   AlertCircle,
-  Trash2
+  Trash2,
+  Construction,
+  Globe
 } from 'lucide-react';
 
 function MainAppContent() {

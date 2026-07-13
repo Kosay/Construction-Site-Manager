@@ -44,7 +44,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
   const [map, setMap] = useState<google.maps.Map | null>(null);
 
   // Pending new-point placement
-  const [pendingLatLng, setPendingLatLng] = useState<{ lat: number; lng: number } | null>(null);
+  const [pendingLatLng, setPendingLatLng] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
   const [newLabel, setNewLabel] = useState('');
   const [newCategory, setNewCategory] = useState<CategoryType>('general');
   const [creating, setCreating] = useState(false);
@@ -71,6 +71,8 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
   useEffect(() => {
     if (!addMode || !canEdit) return;
 
+    let cancelled = false;
+
     const requestGps = async () => {
       setGpsLoading(true);
       try {
@@ -82,9 +84,12 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
           });
         });
 
+        if (cancelled) return;
+
         setPendingLatLng({
           lat: position.coords.latitude,
-          lng: position.coords.longitude
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy
         });
         setNewLabel('');
         setNewCategory('general');
@@ -101,11 +106,12 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
         // GPS failed, allow manual clicking
         console.debug('GPS capture failed:', err);
       } finally {
-        setGpsLoading(false);
+        if (!cancelled) setGpsLoading(false);
       }
     };
 
     requestGps();
+    return () => { cancelled = true; };
   }, [addMode, canEdit, map]);
 
   // Map click handler for adding points (fallback if GPS not available)
@@ -139,7 +145,8 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
         gpsLat: pendingLatLng.lat,
         gpsLng: pendingLatLng.lng,
         timestamp: new Date().toISOString(),
-        deviceInfo: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? 'mobile' : 'desktop'
+        deviceInfo: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? 'mobile' : 'desktop',
+        ...(pendingLatLng.accuracy !== undefined ? { gpsAccuracy: pendingLatLng.accuracy } : {})
       };
 
       await addMapPoint(

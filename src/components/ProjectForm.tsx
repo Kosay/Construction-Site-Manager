@@ -29,6 +29,7 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
   const [calibrationDrawingUrl, setCalibrationDrawingUrl] = useState<string>('');
   const [calibrationPoints, setCalibrationPoints] = useState<CalibrationPoint[]>([]);
   const [kmlData, setKmlData] = useState<{ url: string; fileName: string } | null>(null);
+  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
 
   const drawingInputRef = useRef<HTMLInputElement>(null);
   const kmlInputRef = useRef<HTMLInputElement>(null);
@@ -122,15 +123,19 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
     setError(null);
 
     try {
-      // 1. Create project metadata document with calibration points
-      setUploadStatus('Creating project with calibration points...');
-      const projectId = await createProject(
-        projectName.trim(),
-        description.trim(),
-        userId,
-        kmlData,
-        points
-      );
+      // 1. Create project metadata document with calibration points (skip if already created on retry)
+      let projectId = createdProjectId;
+      if (!projectId) {
+        setUploadStatus('Creating project with calibration points...');
+        projectId = await createProject(
+          projectName.trim(),
+          description.trim(),
+          userId,
+          kmlData,
+          points
+        );
+        setCreatedProjectId(projectId);
+      }
 
       // 2. Upload and register initial drawing
       setUploadStatus('Uploading drawing blueprint (PNG/JPG/PDF)...');
@@ -173,6 +178,7 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
       {showCalibrationModal && (
         <CalibrationPointSetup
           drawingUrl={calibrationDrawingUrl}
+          initialPoints={calibrationPoints}
           onCalibrationComplete={handleCalibrationComplete}
           onCancel={handleCalibrationCancel}
         />
