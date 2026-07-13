@@ -217,15 +217,15 @@ export async function getModels(projectId: string): Promise<Model[]> {
  * Adds a geometric mark to a drawing
  */
 export async function addMark(
-  projectId: string, 
-  drawingId: string, 
-  markData: Omit<Mark, 'id' | 'createdAt'>, 
+  projectId: string,
+  drawingId: string,
+  markData: Omit<Mark, 'id' | 'createdAt'>,
   shareToken?: string
 ): Promise<string> {
   const path = `projects/${projectId}/drawings/${drawingId}/marks`;
   try {
     const markRef = doc(collection(db, 'projects', projectId, 'drawings', drawingId, 'marks'));
-    
+
     // Construct payload. If shareToken is provided, store it so security rules can validate it
     const payload: any = {
       type: markData.type,
@@ -242,6 +242,10 @@ export async function addMark(
 
     if (markData.createdByName) {
       payload.createdByName = markData.createdByName;
+    }
+
+    if (markData.metadata) {
+      payload.metadata = markData.metadata;
     }
 
     if (shareToken) {

@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MousePointer, Circle, Square, Minus, MessageSquare, Plus, Check, X, ShieldAlert, Loader2, Search, Filter, User, Layers, Eye, EyeOff, ZoomIn, ZoomOut, Maximize2, Expand, Shrink } from 'lucide-react';
-import { Mark, MarkCoordinates } from '../types';
-import { addMark } from '../lib/firestore';
+import { MousePointer, Circle, Square, Minus, MessageSquare, Plus, Check, X, ShieldAlert, Loader2, Search, Filter, User, Layers, Eye, EyeOff, ZoomIn, ZoomOut, Maximize2, Expand, Shrink, MapPin } from 'lucide-react';
+import { Mark, MarkCoordinates, CalibrationPoint, Project } from '../types';
+import { addMark, getProject } from '../lib/firestore';
 import { MarkDetailsModal } from './MarkDetailsModal';
 import { useAuth } from '../lib/authContext';
+import { calculateTransformMatrix, gpsToDrawingCoordinates } from '../lib/coordinateTransform';
 
 interface DrawingViewerProps {
   projectId: string;
@@ -56,6 +57,24 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
 
   // Full-page display mode state
   const [isFullPage, setIsFullPage] = useState(false);
+
+  // Project and GPS state
+  const [project, setProject] = useState<Project | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
+
+  // Load project data on mount
+  useEffect(() => {
+    const loadProject = async () => {
+      try {
+        const proj = await getProject(projectId);
+        setProject(proj);
+      } catch (err) {
+        console.error('Failed to load project:', err);
+      }
+    };
+    loadProject();
+  }, [projectId]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -453,18 +472,76 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
   const handleSaveNewMark = async () => {
     if (!newMarkCoords || !newMarkLabel.trim()) return;
     setCreating(true);
+    setGpsLoading(true);
 
     try {
       const authorUid = shareToken ? `anonymous_${shareToken.substring(0, 5)}` : (user?.uid || 'admin');
       const authorName = localStorage.getItem('custom_display_name') || user?.displayName || user?.email || (authorUid === 'admin' ? 'Project Owner' : authorUid);
-      
+
+      // Try to capture GPS coordinates on mobile
+      let finalCoords = newMarkCoords;
+      let metadata: any = {
+        timestamp: new Date().toISOString(),
+        deviceInfo: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? 'mobile' : 'desktop'
+      };
+
+      try {
+        if ('geolocation' in navigator) {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 5000,
+              maximumAge: 0
+            });
+          });
+
+          const { latitude, longitude, accuracy } = position.coords;
+          metadata.gpsLat = latitude;
+          metadata.gpsLng = longitude;
+          metadata.gpsAccuracy = accuracy;
+
+          // If project has calibration points, transform GPS to drawing coordinates
+          if (project?.calibrationPoints && project.calibrationPoints.length === 3) {
+            const matrix = calculateTransformMatrix(project.calibrationPoints);
+            if (matrix) {
+              const transformed = gpsToDrawingCoordinates(latitude, longitude, matrix);
+              if (transformed) {
+                // For circle/rectangle, use transformed center
+                if (newMarkType === 'circle' || newMarkType === 'rectangle') {
+                  finalCoords = {
+                    ...newMarkCoords,
+                    x: transformed.x,
+                    y: transformed.y
+                  };
+                } else if (newMarkType === 'line') {
+                  // For lines, transform both endpoints
+                  finalCoords = {
+                    ...newMarkCoords,
+                    x: transformed.x,
+                    y: transformed.y,
+                    x2: newMarkCoords.x2 ?? transformed.x,
+                    y2: newMarkCoords.y2 ?? transformed.y
+                  };
+                }
+              }
+            }
+          }
+        }
+      } catch (gpsErr) {
+        // GPS capture failed, continue with manual coordinates
+        console.debug('GPS capture failed:', gpsErr);
+      }
+
+      setGpsLoading(false);
+
       await addMark(projectId, drawingId, {
         type: newMarkType,
-        coordinates: newMarkCoords,
+        coordinates: finalCoords,
         label: newMarkLabel.trim(),
         createdBy: authorUid,
         createdByName: authorName,
         category: newMarkCategory,
+        metadata,
         evidencePhotos: []
       }, shareToken);
 
@@ -473,12 +550,14 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
       setNewMarkCoords(null);
       setNewMarkLabel('');
       setNewMarkCategory('general');
-      setActiveTool('select'); // drop tool back to select
+      setGpsCoords(null);
+      setActiveTool('select');
     } catch (error) {
       console.error('Failed to create mark:', error);
       alert('Error creating mark. Make sure link is valid.');
     } finally {
       setCreating(false);
+      setGpsLoading(false);
     }
   };
 
