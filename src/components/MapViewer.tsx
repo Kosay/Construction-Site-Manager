@@ -48,6 +48,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
   const [newLabel, setNewLabel] = useState('');
   const [newCategory, setNewCategory] = useState<CategoryType>('general');
   const [creating, setCreating] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState(false);
 
   const loadPoints = useCallback(async () => {
     try {
@@ -66,9 +67,50 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  // Map click handler for adding points
+  // Request GPS when entering add mode
   useEffect(() => {
-    if (!map || !addMode || !canEdit) return;
+    if (!addMode || !canEdit) return;
+
+    const requestGps = async () => {
+      setGpsLoading(true);
+      try {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0
+          });
+        });
+
+        setPendingLatLng({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+        setNewLabel('');
+        setNewCategory('general');
+
+        // Center map on GPS location
+        if (map) {
+          map.setCenter({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          });
+          map.setZoom(18);
+        }
+      } catch (err) {
+        // GPS failed, allow manual clicking
+        console.debug('GPS capture failed:', err);
+      } finally {
+        setGpsLoading(false);
+      }
+    };
+
+    requestGps();
+  }, [addMode, canEdit, map]);
+
+  // Map click handler for adding points (fallback if GPS not available)
+  useEffect(() => {
+    if (!map || !addMode || !canEdit || gpsLoading) return;
 
     const handleClick = (e: google.maps.MapMouseEvent) => {
       if (!e.latLng) return;
@@ -78,14 +120,14 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
     };
 
     map.addListener('click', handleClick);
-    if (mapContainerRef.current) {
+    if (mapContainerRef.current && !pendingLatLng) {
       mapContainerRef.current.style.cursor = 'crosshair';
     }
 
     return () => {
       google.maps.event.removeListener;
     };
-  }, [map, addMode, canEdit]);
+  }, [map, addMode, canEdit, gpsLoading, pendingLatLng]);
 
 
   const handleCreatePoint = async () => {
@@ -93,6 +135,13 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
     setCreating(true);
     try {
       const name = localStorage.getItem('custom_display_name') || user?.displayName || undefined;
+      const metadata = {
+        gpsLat: pendingLatLng.lat,
+        gpsLng: pendingLatLng.lng,
+        timestamp: new Date().toISOString(),
+        deviceInfo: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? 'mobile' : 'desktop'
+      };
+
       await addMapPoint(
         projectId,
         {
@@ -102,6 +151,7 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
           category: newCategory,
           createdBy: user?.uid || 'guest',
           ...(name ? { createdByName: name } : {}),
+          metadata,
           evidencePhotos: [],
         },
         shareToken
@@ -162,11 +212,20 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
               </button>
               <button
                 onClick={() => setAddMode(true)}
+                disabled={gpsLoading}
                 className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-bold transition cursor-pointer ${
                   addMode ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
+                } disabled:opacity-50`}
               >
-                <Plus className="h-3.5 w-3.5" /> Add Point
+                {gpsLoading ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Getting Location...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-3.5 w-3.5" /> Add Point
+                  </>
+                )}
               </button>
             </div>
           )}
@@ -174,7 +233,15 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
 
         {addMode && canEdit && !pendingLatLng && (
           <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[500] bg-blue-600 text-white px-4 py-1.5 rounded-full text-xs font-semibold shadow-lg flex items-center gap-2 animate-pulse">
-            <Crosshair className="h-3.5 w-3.5" /> Click anywhere on the map to drop a point
+            {gpsLoading ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Getting location...
+              </>
+            ) : (
+              <>
+                <Crosshair className="h-3.5 w-3.5" /> Click anywhere on the map to drop a point
+              </>
+            )}
           </div>
         )}
 

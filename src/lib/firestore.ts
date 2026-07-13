@@ -340,6 +340,7 @@ export async function addMapPoint(
 
     if (pointData.category) payload.category = pointData.category;
     if (pointData.createdByName) payload.createdByName = pointData.createdByName;
+    if (pointData.metadata) payload.metadata = pointData.metadata;
     if (shareToken) payload.shareToken = shareToken;
 
     await setDoc(pointRef, payload);

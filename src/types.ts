@@ -90,6 +90,7 @@ export interface MapPoint {
   createdByName?: string;
   createdAt: any;
   evidencePhotos: EvidencePhoto[];
+  metadata?: MarkMetadata;
   shareToken?: string;
 }
 
