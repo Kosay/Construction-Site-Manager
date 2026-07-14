@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { LayoutGrid, FileText, UploadCloud, Check, AlertCircle, Loader2, Box } from 'lucide-react';
 import { uploadFile } from '../lib/storage';
 import { createProject, addDrawing, addModel } from '../lib/firestore';
+import { convertPdfToImage } from '../lib/pdfConverter';
 import { CalibrationPointSetup } from './CalibrationPointSetup';
 import { CalibrationPoint } from '../types';
 
@@ -22,6 +23,7 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
 
   // Status state
   const [submitting, setSubmitting] = useState(false);
+  const [convertingPdf, setConvertingPdf] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
@@ -36,19 +38,31 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
   const kmlInputRef = useRef<HTMLInputElement>(null);
   const glbInputRef = useRef<HTMLInputElement>(null);
 
-  const handleDrawingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDrawingChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       const isImage = file.type.startsWith('image/');
       const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
       if (isPdf) {
-        setError('PDF drawings are not supported for calibration at this time. Please use PNG or JPG instead.');
+        setConvertingPdf(true);
+        setError(null);
+        try {
+          const imageFile = await convertPdfToImage(file);
+          setDrawingFile(imageFile);
+          setError(null);
+        } catch (err) {
+          console.error("PDF to Image conversion error:", err);
+          setError(err instanceof Error ? err.message : 'Failed to convert PDF blueprint to image.');
+          setDrawingFile(null);
+        } finally {
+          setConvertingPdf(false);
+        }
         return;
       }
 
       if (!isImage) {
-        setError('Drawings must be a .png, .jpg, or .jpeg file.');
+        setError('Drawings must be a .png, .jpg, .jpeg, or .pdf file.');
         return;
       }
 
@@ -268,7 +282,13 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
             className="hidden"
             disabled={submitting}
           />
-          {drawingFile ? (
+          {convertingPdf ? (
+            <div className="w-full h-24 flex flex-col items-center justify-center border border-dashed border-blue-300 dark:border-blue-800 rounded bg-blue-50/10 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 animate-pulse">
+              <Loader2 className="h-6 w-6 mb-1 animate-spin" />
+              <span className="text-xs font-semibold">Converting PDF to Blueprint Image...</span>
+              <span className="text-[9px] text-slate-400">Generating sharp vector page</span>
+            </div>
+          ) : drawingFile ? (
             <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2 rounded border border-emerald-200 dark:border-emerald-900/30">
               <div className="flex items-center gap-2 truncate">
                 <FileText className="h-4 w-4 text-emerald-600 shrink-0" />
@@ -294,7 +314,7 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
             >
               <UploadCloud className="h-6 w-6 mb-1 text-slate-400" />
               <span className="text-xs font-semibold text-slate-600">Select Site Drawing</span>
-              <span className="text-[9px] text-slate-400">Max size 50MB</span>
+              <span className="text-[9px] text-slate-400">PNG, JPG, PDF up to 50MB</span>
             </button>
           )}
         </div>

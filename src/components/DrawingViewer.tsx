@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MousePointer, Circle, Square, Minus, MessageSquare, Plus, Check, X, ShieldAlert, Loader2, Search, Filter, User, Layers, Eye, EyeOff, ZoomIn, ZoomOut, Maximize2, Expand, Shrink, MapPin, Camera, Trash2 } from 'lucide-react';
+import { MousePointer, Circle, Square, Minus, MessageSquare, Plus, Check, X, ShieldAlert, Loader2, Search, Filter, User, Layers, Eye, EyeOff, ZoomIn, ZoomOut, Maximize2, Expand, Shrink, MapPin, Camera, Trash2, UploadCloud, Calendar } from 'lucide-react';
 import { Mark, MarkCoordinates, CalibrationPoint, Project } from '../types';
 import { addMark, getProject } from '../lib/firestore';
 import { uploadFile } from '../lib/storage';
 import { MarkDetailsModal } from './MarkDetailsModal';
 import { useAuth } from '../lib/authContext';
 import { calculateTransformMatrix, gpsToDrawingCoordinates } from '../lib/coordinateTransform';
+import { BrowserCameraViewfinder } from './BrowserCameraViewfinder';
 
 interface DrawingViewerProps {
   projectId: string;
@@ -44,6 +45,9 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
   const [newMarkLabel, setNewMarkLabel] = useState('');
   const [newMarkCategory, setNewMarkCategory] = useState<'safety' | 'measurement' | 'defect' | 'general' | 'progress' | 'quality' | 'other'>('general');
   const [creating, setCreating] = useState(false);
+  const [newMarkPhotoFile, setNewMarkPhotoFile] = useState<File | null>(null);
+  const [newMarkPhotoPreviewUrl, setNewMarkPhotoPreviewUrl] = useState<string | null>(null);
+  const [showNewMarkCamera, setShowNewMarkCamera] = useState(false);
 
   // GPS Camera capture workflow states
   const [showGpsCameraModal, setShowGpsCameraModal] = useState(false);
@@ -61,6 +65,8 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
   const [filterType, setFilterType] = useState<string>('all');
   const [filterCreator, setFilterCreator] = useState<string>('all');
   const [filterCategories, setFilterCategories] = useState<string[]>(['safety', 'measurement', 'defect', 'general', 'progress', 'quality', 'other']);
+  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  const [filterEndDate, setFilterEndDate] = useState<string>('');
   const [hideFilteredOnCanvas, setHideFilteredOnCanvas] = useState(false);
 
   // Zoom State
@@ -107,14 +113,36 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
   });
   const uniqueCreators = Array.from(uniqueCreatorsMap.entries()).map(([id, name]) => ({ id, name }));
 
-  // Filter marks based on searchQuery, filterType, filterCreator, and filterCategories
+  // Filter marks based on searchQuery, filterType, filterCreator, filterCategories, and date range
   const filteredMarks = marks.filter(mark => {
     const labelMatch = mark.label.toLowerCase().includes(searchQuery.toLowerCase());
     const typeMatch = filterType === 'all' || mark.type === filterType;
     const creatorMatch = filterCreator === 'all' || mark.createdBy === filterCreator;
     const markCategory = mark.category || 'general';
     const categoryMatch = filterCategories.includes(markCategory);
-    return labelMatch && typeMatch && creatorMatch && categoryMatch;
+    
+    let dateMatch = true;
+    if (filterStartDate || filterEndDate) {
+      const markDate = mark.createdAt
+        ? (mark.createdAt.toDate ? mark.createdAt.toDate() : new Date(mark.createdAt))
+        : null;
+      if (markDate) {
+        if (filterStartDate) {
+          const start = new Date(filterStartDate);
+          start.setHours(0, 0, 0, 0);
+          if (markDate < start) dateMatch = false;
+        }
+        if (filterEndDate) {
+          const end = new Date(filterEndDate);
+          end.setHours(23, 59, 59, 999);
+          if (markDate > end) dateMatch = false;
+        }
+      } else {
+        dateMatch = false;
+      }
+    }
+
+    return labelMatch && typeMatch && creatorMatch && categoryMatch && dateMatch;
   });
 
   const getCategoryTheme = (category?: string) => {
@@ -489,7 +517,22 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
       const authorUid = shareToken ? `anonymous_${shareToken.substring(0, 5)}` : (user?.uid || 'admin');
       const authorName = localStorage.getItem('custom_display_name') || user?.displayName || user?.email || (authorUid === 'admin' ? 'Project Owner' : authorUid);
 
-      // Try to capture GPS coordinates on mobile
+      const tempMarkId = Math.random().toString(36).substring(2, 11);
+
+      // 1. Upload photo if snapped
+      const evidencePhotos = [];
+      if (newMarkPhotoFile) {
+        const fileExtension = newMarkPhotoFile.name.split('.').pop() || 'jpg';
+        const photoPath = `projects/${projectId}/drawings/${drawingId}/marks/${tempMarkId}/evidence/${Date.now()}.${fileExtension}`;
+        const downloadUrl = await uploadFile(photoPath, newMarkPhotoFile);
+        evidencePhotos.push({
+          photoId: Math.random().toString(36).substring(2, 11),
+          url: downloadUrl,
+          uploadedAt: new Date().toISOString()
+        });
+      }
+
+      // 2. Try to capture GPS coordinates on mobile
       let finalCoords = newMarkCoords;
       let metadata: any = {
         timestamp: new Date().toISOString(),
@@ -526,7 +569,7 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
         createdByName: authorName,
         category: newMarkCategory,
         metadata,
-        evidencePhotos: []
+        evidencePhotos
       }, shareToken);
 
       onUpdate();
@@ -534,6 +577,10 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
       setNewMarkCoords(null);
       setNewMarkLabel('');
       setNewMarkCategory('general');
+      setNewMarkPhotoFile(null);
+      if (newMarkPhotoPreviewUrl) URL.revokeObjectURL(newMarkPhotoPreviewUrl);
+      setNewMarkPhotoPreviewUrl(null);
+      setShowNewMarkCamera(false);
       setGpsCoords(null);
       setActiveTool('select');
     } catch (error) {
@@ -938,6 +985,80 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
                 </select>
               </div>
 
+              {/* Filter by Date Range */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <Calendar className="h-3 w-3 text-blue-500" />
+                    Date Range Window
+                  </label>
+                  {(filterStartDate || filterEndDate) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilterStartDate('');
+                        setFilterEndDate('');
+                      }}
+                      className="text-[9px] font-bold text-rose-500 hover:text-rose-600 cursor-pointer hover:underline uppercase transition-colors"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[8px] font-semibold text-slate-400 dark:text-slate-500 block mb-0.5 uppercase">From</span>
+                    <input
+                      type="date"
+                      value={filterStartDate}
+                      onChange={(e) => setFilterStartDate(e.target.value)}
+                      className="w-full p-1 py-0.5 text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[8px] font-semibold text-slate-400 dark:text-slate-500 block mb-0.5 uppercase">To</span>
+                    <input
+                      type="date"
+                      value={filterEndDate}
+                      onChange={(e) => setFilterEndDate(e.target.value)}
+                      className="w-full p-1 py-0.5 text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {[
+                    { label: 'Today', days: 0 },
+                    { label: '7 Days', days: 7 },
+                    { label: '30 Days', days: 30 }
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        const today = new Date();
+                        const todayStr = today.toISOString().split('T')[0];
+                        if (preset.days === 0) {
+                          setFilterStartDate(todayStr);
+                          setFilterEndDate(todayStr);
+                        } else {
+                          const pastDate = new Date();
+                          pastDate.setDate(today.getDate() - preset.days);
+                          const pastStr = pastDate.toISOString().split('T')[0];
+                          setFilterStartDate(pastStr);
+                          setFilterEndDate(todayStr);
+                        }
+                      }}
+                      className="px-1.5 py-0.5 text-[9px] font-medium bg-slate-100 dark:bg-slate-850 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 rounded transition cursor-pointer"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Filter by Category Checklist */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
@@ -1335,14 +1456,106 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
               </div>
             </div>
 
+            {/* Direct Camera Snapshot for Standard Mark */}
+            <div className="mt-4">
+              <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
+                Attach Evidence Photo (Optional)
+              </label>
+
+              {newMarkPhotoPreviewUrl ? (
+                <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow bg-slate-50">
+                  <img
+                    src={newMarkPhotoPreviewUrl}
+                    alt="Captured observation"
+                    className="w-full h-40 object-cover block"
+                    referrerPolicy="no-referrer"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewMarkPhotoFile(null);
+                      if (newMarkPhotoPreviewUrl) URL.revokeObjectURL(newMarkPhotoPreviewUrl);
+                      setNewMarkPhotoPreviewUrl(null);
+                    }}
+                    className="absolute top-2 right-2 p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-full shadow cursor-pointer animate-fade-in"
+                    title="Discard Photo"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : showNewMarkCamera ? (
+                <div className="space-y-2">
+                  <BrowserCameraViewfinder
+                    idealFacingMode="environment"
+                    onCapture={(file, previewUrl) => {
+                      setNewMarkPhotoFile(file);
+                      setNewMarkPhotoPreviewUrl(previewUrl);
+                      setShowNewMarkCamera(false);
+                    }}
+                    onCancel={() => setShowNewMarkCamera(false)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewMarkCamera(false)}
+                    className="w-full py-1.5 text-center text-xs text-slate-500 hover:text-slate-700 font-semibold cursor-pointer"
+                  >
+                    Cancel Camera
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewMarkCamera(true)}
+                    className="flex-1 py-3 px-4 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-slate-800 hover:border-blue-500 hover:bg-blue-50/20 dark:hover:bg-blue-950/10 rounded-xl cursor-pointer transition text-center shadow-sm"
+                  >
+                    <Camera className="h-5 w-5 text-slate-400 mb-1" />
+                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                      SNAP WITH APP CAMERA
+                    </span>
+                  </button>
+
+                  <div className="relative flex-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          const file = e.target.files[0];
+                          setNewMarkPhotoFile(file);
+                          setNewMarkPhotoPreviewUrl(URL.createObjectURL(file));
+                        }
+                      }}
+                      className="hidden"
+                      id="standard-camera-file-input"
+                    />
+                    <label
+                      htmlFor="standard-camera-file-input"
+                      className="w-full h-full py-3 px-4 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-slate-800 hover:border-blue-500 hover:bg-blue-50/20 dark:hover:bg-blue-950/10 rounded-xl cursor-pointer transition text-center shadow-sm"
+                    >
+                      <UploadCloud className="h-5 w-5 text-slate-400 mb-1" />
+                      <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                        UPLOAD / FILE SELECT
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="mt-5 flex justify-end gap-2 text-sm font-medium">
               <button
                 onClick={() => {
                   setShowCreateDialog(false);
                   setNewMarkCoords(null);
+                  setNewMarkPhotoFile(null);
+                  if (newMarkPhotoPreviewUrl) URL.revokeObjectURL(newMarkPhotoPreviewUrl);
+                  setNewMarkPhotoPreviewUrl(null);
+                  setShowNewMarkCamera(false);
                 }}
                 disabled={creating}
-                className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-50 rounded-lg cursor-pointer text-slate-600"
+                className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900 rounded-lg cursor-pointer text-slate-600 dark:text-slate-400"
               >
                 Discard
               </button>
@@ -1455,12 +1668,13 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
                       src={gpsPhotoPreviewUrl} 
                       alt="Captured site observation" 
                       className="w-full h-48 object-cover block"
+                      referrerPolicy="no-referrer"
                     />
                     <button
                       type="button"
                       onClick={() => {
                         setGpsPhotoFile(null);
-                        URL.revokeObjectURL(gpsPhotoPreviewUrl);
+                        if (gpsPhotoPreviewUrl) URL.revokeObjectURL(gpsPhotoPreviewUrl);
                         setGpsPhotoPreviewUrl(null);
                       }}
                       className="absolute top-2 right-2 p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-full shadow cursor-pointer"
@@ -1470,33 +1684,40 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
                     </button>
                   </div>
                 ) : (
-                  <div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          const file = e.target.files[0];
-                          setGpsPhotoFile(file);
-                          setGpsPhotoPreviewUrl(URL.createObjectURL(file));
-                        }
+                  <div className="space-y-3">
+                    <BrowserCameraViewfinder
+                      idealFacingMode="environment"
+                      onCapture={(file, previewUrl) => {
+                        setGpsPhotoFile(file);
+                        setGpsPhotoPreviewUrl(previewUrl);
                       }}
-                      className="hidden"
-                      id="gps-camera-file-input"
                     />
-                    <label
-                      htmlFor="gps-camera-file-input"
-                      className="w-full h-36 flex flex-col items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-800 hover:border-blue-500 hover:bg-blue-50/20 dark:hover:bg-blue-950/10 rounded-2xl cursor-pointer transition text-center p-4 shadow-sm"
-                    >
-                      <Camera className="h-10 w-10 text-slate-400 mb-2" />
-                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                        TAP TO CAPTURE PHOTO
-                      </span>
-                      <span className="text-[9px] text-slate-400 mt-1">
-                        Launches Android Camera directly
-                      </span>
-                    </label>
+                    <div className="text-center">
+                      <span className="text-[10px] text-slate-400">or upload / capture using native device camera:</span>
+                    </div>
+                    <div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            const file = e.target.files[0];
+                            setGpsPhotoFile(file);
+                            setGpsPhotoPreviewUrl(URL.createObjectURL(file));
+                          }
+                        }}
+                        className="hidden"
+                        id="gps-camera-file-input"
+                      />
+                      <label
+                        htmlFor="gps-camera-file-input"
+                        className="w-full py-2.5 px-4 flex items-center justify-center gap-2 border border-dashed border-slate-300 dark:border-slate-800 hover:border-blue-500 hover:bg-blue-50/20 dark:hover:bg-blue-950/10 rounded-xl cursor-pointer transition text-center shadow-sm text-xs font-bold text-slate-700 dark:text-slate-300"
+                      >
+                        <UploadCloud className="h-4 w-4 text-slate-400 animate-pulse" />
+                        <span>Use Native Camera / File Upload</span>
+                      </label>
+                    </div>
                   </div>
                 )}
               </div>
