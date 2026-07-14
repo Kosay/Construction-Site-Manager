@@ -1,10 +1,9 @@
 {
-  "projectId": "studio-7211011860-c8b46",
-  "appId": "1:535914222664:web:07094a40a962dcff9e747d",
-  "apiKey": "AIzaSyCvPyxif3Qb2LvWs2iGJgamNSyJ4HIil9I",
-  "authDomain": "studio-7211011860-c8b46.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-139617c8-74da-474f-ba01-35f48fe2cdf8",
-  "storageBucket": "studio-7211011860-c8b46.firebasestorage.app",
-  "messagingSenderId": "535914222664",
-  "measurementId": ""
+  "apiKey": "AIzaSyBvoHos0pvP2Op7HzT1_A71RfHY-cJCAfo",
+  "authDomain": "kmh-project-viewer.firebaseapp.com",
+  "projectId": "kmh-project-viewer",
+  "storageBucket": "kmh-project-viewer.firebasestorage.app",
+  "messagingSenderId": "1003362985583",
+  "appId": "1:1003362985583:web:9e0c5e4cbfad70c725cf9a",
+  "measurementId": "G-LGGNH874PN"
 }

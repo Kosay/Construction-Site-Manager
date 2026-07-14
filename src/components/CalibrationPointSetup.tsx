@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { MapPin, Plus, Trash2, AlertCircle, Check, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { MapPin, Plus, Trash2, AlertCircle, Check, Loader2, ZoomIn, ZoomOut, Maximize2, Hand, MousePointer } from 'lucide-react';
 import { CalibrationPoint } from '../types';
 import { validateCalibrationPoints, estimateRequiredAccuracy } from '../lib/coordinateTransform';
 
@@ -23,11 +23,44 @@ export const CalibrationPointSetup: React.FC<CalibrationPointSetupProps> = ({
   const imageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Zoom and Pan States
+  const [zoomScale, setZoomScale] = useState(1.0);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [toolMode, setToolMode] = useState<'select' | 'pan'>('select');
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [spacePressed, setSpacePressed] = useState(false);
+
   const validation = validateCalibrationPoints(points);
   const requiredAccuracy = points.length > 0 ? estimateRequiredAccuracy(points) : 10;
 
+  const activeToolMode = spacePressed ? 'pan' : toolMode;
+
+  // Spacebar mode toggle
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setSpacePressed(true);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setSpacePressed(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
   // Handle drawing click to set drawing coordinates
-  const handleDrawingClick = (e: React.MouseEvent<HTMLImageElement>) => {
+  const handleDrawingClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (activePointIndex === null || !imageRef.current) return;
 
     const rect = imageRef.current.getBoundingClientRect();
@@ -41,6 +74,67 @@ export const CalibrationPointSetup: React.FC<CalibrationPointSetupProps> = ({
       drawingY: Math.max(0, Math.min(100, y))
     };
     setPoints(updatedPoints);
+  };
+
+  // Mouse pan handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (activeToolMode === 'pan' || e.button === 1 || e.button === 2) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+      e.preventDefault();
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setPanOffset({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+  };
+
+  // Touch pan handlers (for mobile/tablet)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      if (activeToolMode === 'pan') {
+        setIsDragging(true);
+        const touch = e.touches[0];
+        setDragStart({ x: touch.clientX - panOffset.x, y: touch.clientY - panOffset.y });
+      }
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging) return;
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      setPanOffset({
+        x: touch.clientX - dragStart.x,
+        y: touch.clientY - dragStart.y
+      });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+  };
+
+  // Mouse Wheel Zoom
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey) {
+      e.preventDefault();
+      const delta = -e.deltaY;
+      const factor = delta > 0 ? 1.15 : 0.85;
+      setZoomScale(prev => Math.max(0.5, Math.min(4.0, prev * factor)));
+    }
   };
 
   // Request device GPS location
@@ -150,57 +244,154 @@ export const CalibrationPointSetup: React.FC<CalibrationPointSetupProps> = ({
           <div className="grid grid-cols-2 gap-4 p-6 min-h-0">
 
             {/* Drawing Preview - Left Side */}
-            <div className="flex flex-col gap-3 min-w-0">
+            <div className="flex flex-col gap-3 min-w-0 h-full">
               <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">
                 Click on drawing to set coordinates
               </h3>
-              <div
-                ref={containerRef}
-                className="flex-1 bg-slate-100 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 overflow-auto flex items-center justify-center"
-              >
-                <div className="relative inline-block">
-                  <img
-                    ref={imageRef}
-                    src={drawingUrl}
-                    alt="Drawing"
-                    className="w-auto h-auto object-contain cursor-crosshair"
-                    onClick={handleDrawingClick}
-                  />
+              <div className="flex-1 bg-slate-100 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 overflow-hidden relative flex flex-col min-h-[350px]">
+                {/* Floating Toolbar inside Drawing Panel */}
+                <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 p-1.5 rounded-xl shadow-lg">
+                  {/* Tool Mode Selectors */}
+                  <button
+                    type="button"
+                    onClick={() => setToolMode('select')}
+                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                      activeToolMode === 'select'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                    title="Select Point Tool (Crosshair)"
+                  >
+                    <MousePointer className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setToolMode('pan')}
+                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                      activeToolMode === 'pan'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                    title="Pan/Drag Tool (Hand) [Hold Spacebar]"
+                  >
+                    <Hand className="h-4 w-4" />
+                  </button>
 
-                  {/* Overlay points on drawing */}
-                  <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                    {points.map((point, idx) => (
-                      <g key={idx}>
-                        <circle
-                          cx={`${point.drawingX}%`}
-                          cy={`${point.drawingY}%`}
-                          r="8"
-                          fill={activePointIndex === idx ? '#3b82f6' : '#ef4444'}
-                          opacity="0.8"
-                        />
-                        <circle
-                          cx={`${point.drawingX}%`}
-                          cy={`${point.drawingY}%`}
-                          r="8"
-                          fill="none"
-                          stroke="white"
-                          strokeWidth="2"
-                        />
-                        <text
-                          x={`${point.drawingX}%`}
-                          y={`${point.drawingY}%`}
-                          dy="0.3em"
-                          textAnchor="middle"
-                          fill="white"
-                          fontSize="10"
-                          fontWeight="bold"
-                          pointerEvents="none"
-                        >
-                          {idx + 1}
-                        </text>
-                      </g>
-                    ))}
-                  </svg>
+                  <span className="h-4 w-[1px] bg-slate-200 dark:bg-slate-800 mx-1" />
+
+                  {/* Zoom Buttons */}
+                  <button
+                    type="button"
+                    onClick={() => setZoomScale(prev => Math.max(0.5, prev - 0.25))}
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    title="Zoom Out"
+                  >
+                    <ZoomOut className="h-4 w-4" />
+                  </button>
+                  <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400 min-w-[36px] text-center">
+                    {Math.round(zoomScale * 100)}%
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setZoomScale(prev => Math.min(4.0, prev + 0.25))}
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    title="Zoom In"
+                  >
+                    <ZoomIn className="h-4 w-4" />
+                  </button>
+
+                  <span className="h-4 w-[1px] bg-slate-200 dark:bg-slate-800 mx-1" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setZoomScale(1.0);
+                      setPanOffset({ x: 0, y: 0 });
+                    }}
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    title="Reset View"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* Micro Help Text Overlay */}
+                <div className="absolute bottom-3 left-3 z-10 text-[9px] bg-slate-900/85 backdrop-blur-md text-slate-300 px-2 py-1 rounded-lg border border-slate-800 pointer-events-none select-none font-medium flex items-center gap-1.5 shadow-md max-w-[85%]">
+                  <span>💡</span>
+                  <span className="truncate">
+                    {activeToolMode === 'select' 
+                      ? 'Click on blueprint to place active point. Hold SPACEBAR to drag.' 
+                      : 'Click and drag to pan blueprint. Release SPACEBAR to select points.'}
+                  </span>
+                </div>
+
+                {/* Drawing Viewport */}
+                <div
+                  ref={containerRef}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseLeave}
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                  onWheel={handleWheel}
+                  className={`flex-1 overflow-hidden flex items-center justify-center relative bg-slate-50 dark:bg-slate-950 ${
+                    activeToolMode === 'pan' 
+                      ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') 
+                      : 'cursor-crosshair'
+                  }`}
+                >
+                  <div
+                    className="relative transition-transform duration-100 ease-out select-none"
+                    style={{
+                      transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
+                      transformOrigin: 'center center',
+                    }}
+                    onClick={(e) => {
+                      if (activeToolMode === 'select') {
+                        handleDrawingClick(e);
+                      }
+                    }}
+                  >
+                    <img
+                      ref={imageRef}
+                      src={drawingUrl}
+                      alt="Drawing"
+                      className="max-h-[50vh] w-auto block object-contain pointer-events-none"
+                    />
+
+                    {/* Overlay points on drawing */}
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none select-none">
+                      {points.map((point, idx) => (
+                        <g key={idx}>
+                          <circle
+                            cx={`${point.drawingX}%`}
+                            cy={`${point.drawingY}%`}
+                            r={activePointIndex === idx ? '8' : '6'}
+                            className={`transition-all duration-200 ${
+                              activePointIndex === idx 
+                                ? 'fill-blue-500 stroke-white stroke-[2]' 
+                                : 'fill-red-500 stroke-white stroke-[1.5]'
+                            }`}
+                            opacity="0.9"
+                          />
+                          <text
+                            x={`${point.drawingX}%`}
+                            y={`${point.drawingY}%`}
+                            dy="0.3em"
+                            textAnchor="middle"
+                            fill="white"
+                            fontSize="9"
+                            fontWeight="bold"
+                            pointerEvents="none"
+                          >
+                            {idx + 1}
+                          </text>
+                        </g>
+                      ))}
+                    </svg>
+                  </div>
                 </div>
               </div>
             </div>
