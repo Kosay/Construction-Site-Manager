@@ -23,6 +23,8 @@ import { ShareLinkGenerator } from './components/ShareLinkGenerator';
 import { ModelViewer } from './components/ModelViewer';
 import { MapViewer } from './components/MapViewer';
 import { AuthPage } from './components/AuthPage';
+import { MobileApp } from './components/mobile/MobileApp';
+import { useIsMobile } from './hooks/useIsMobile';
 import { signInAnonymously, updateProfile } from 'firebase/auth';
 import { auth } from './lib/firebase';
 import {
@@ -46,7 +48,13 @@ import {
 
 function MainAppContent() {
   const { user, loading: authLoading, logout } = useAuth();
-  
+  const isMobile = useIsMobile();
+
+  // Route mobile users to mobile-optimized UI
+  if (isMobile && user) {
+    return <MobileApp onSignOut={logout} />;
+  }
+
   // Routing / Path States
   const [shareToken, setShareToken] = useState<string | null>(null);
   const [isShareView, setIsShareView] = useState(false);
