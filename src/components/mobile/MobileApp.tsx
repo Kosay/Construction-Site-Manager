@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Drawing, Mark } from '../types';
-import { getDrawings, getMarks } from '../lib/firestore';
+import { Drawing, Mark } from '../../types';
+import { getDrawings, getMarks } from '../../lib/firestore';
 import { MobileProjectsList } from './MobileProjectsList';
 import { MobileDrawingViewer } from './MobileDrawingViewer';
 import { MobilePhotoCapture } from './MobilePhotoCapture';

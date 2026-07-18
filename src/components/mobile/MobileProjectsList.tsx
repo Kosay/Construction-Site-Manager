@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Project } from '../types';
-import { getProjects } from '../lib/firestore';
-import { useAuth } from '../lib/authContext';
+import { Project } from '../../types';
+import { getProjects } from '../../lib/firestore';
+import { useAuth } from '../../lib/authContext';
 import { Loader2, AlertCircle, Folder } from 'lucide-react';
 
 interface MobileProjectsListProps {

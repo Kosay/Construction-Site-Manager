@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mark } from '../types';
+import { Mark } from '../../types';
 import { Camera, MapPin } from 'lucide-react';
 
 interface MobileMarksListProps {

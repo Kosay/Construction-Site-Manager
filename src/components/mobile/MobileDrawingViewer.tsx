@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Circle, Square, Minus, Camera, MapPin, ChevronLeft, Loader2 } from 'lucide-react';
-import { Drawing, Mark } from '../types';
-import { getMarks, getProject } from '../lib/firestore';
-import { Project } from '../types';
+import { Drawing, Mark, Project } from '../../types';
+import { getMarks, getProject } from '../../lib/firestore';
 
 interface MobileDrawingViewerProps {
   projectId: string;
