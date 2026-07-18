@@ -15,6 +15,7 @@ interface MobileAppProps {
 }
 
 export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
+  const [isTablet, setIsTablet] = useState(window.innerWidth >= 768);
   const [activeTab, setActiveTab] = useState<'projects' | 'drawing' | 'marks' | 'settings'>(
     'projects'
   );
@@ -25,6 +26,14 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [marks, setMarks] = useState<Mark[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsTablet(window.innerWidth >= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleProjectSelect = async (projectId: string) => {
     setSelectedProjectId(projectId);
@@ -143,19 +152,42 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
 
       {currentScreen === 'marks' && (
         <div className="flex flex-col h-full">
-          <div className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-3">
-            <h2 className="font-semibold text-slate-900 dark:text-slate-100">
+          <div className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-3 md:p-4">
+            <h2 className="font-semibold text-slate-900 dark:text-slate-100 text-base md:text-lg">
               Marks ({marks.length})
             </h2>
           </div>
-          <div className="flex-1">
-            <MobileMarksList
-              projectId={selectedProjectId!}
-              marks={marks}
-              onSelectMark={() => {
-                // TODO: Open mark details
-              }}
-            />
+          <div className="flex-1 overflow-auto">
+            {isTablet ? (
+              <div className="p-3 md:p-4 grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 pb-20">
+                {marks.map((mark) => (
+                  <MobileMarksList
+                    key={mark.id}
+                    projectId={selectedProjectId!}
+                    marks={[mark]}
+                    onSelectMark={() => {
+                      // TODO: Open mark details
+                    }}
+                  />
+                ))}
+                {marks.length === 0 && (
+                  <div className="col-span-full flex items-center justify-center py-12">
+                    <div className="text-center">
+                      <p className="text-sm text-slate-500 dark:text-slate-400">No marks yet</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Create marks from the drawing screen</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <MobileMarksList
+                projectId={selectedProjectId!}
+                marks={marks}
+                onSelectMark={() => {
+                  // TODO: Open mark details
+                }}
+              />
+            )}
           </div>
         </div>
       )}
