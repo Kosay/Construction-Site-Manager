@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Share2, Copy, Trash2, Calendar, ShieldCheck, ShieldAlert, Check, Loader2 } from 'lucide-react';
+import { Share2, Copy, Trash2, Calendar, ShieldCheck, ShieldAlert, Check, Loader2, Eye, Edit3 } from 'lucide-react';
 import { createShareLink, getProjectShareLinks, revokeShareLink } from '../lib/firestore';
 import { ShareLink } from '../types';
 
@@ -42,11 +42,11 @@ export const ShareLinkGenerator: React.FC<ShareLinkGeneratorProps> = ({ projectI
     }
   };
 
-  const handleCreateLink = async () => {
+  const handleCreateLink = async (level: 'view' | 'edit') => {
     setGenerating(true);
     setError(null);
     try {
-      const newLink = await createShareLink(projectId, accessLevel, expiresInDays, adminUid);
+      const newLink = await createShareLink(projectId, level, expiresInDays, adminUid);
       if (newLink) {
         // Create local optimistic friendly representation to avoid transient rendering of unpopulated ServerTimestamp
         const clientFriendlyLink: ShareLink = {
@@ -99,65 +99,47 @@ export const ShareLinkGenerator: React.FC<ShareLinkGeneratorProps> = ({ projectI
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Sort links to have the most recent first
+  const sortedLinks = [...links].sort((a, b) => {
+    const aTime = a.createdAt
+      ? (a.createdAt.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt).getTime())
+      : 0;
+    const bTime = b.createdAt
+      ? (b.createdAt.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt).getTime())
+      : 0;
+    return bTime - aTime;
+  });
+
+  const activeViewLink = sortedLinks.find(l => l.accessLevel === 'view');
+  const activeEditLink = sortedLinks.find(l => l.accessLevel === 'edit');
+
   return (
     <div className="space-y-6 bg-white dark:bg-slate-900 p-6 rounded border border-slate-200 dark:border-slate-800 shadow">
-      <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-4">
-        <Share2 className="h-5 w-5 text-blue-600 animate-pulse" />
-        <div>
-          <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Generate Shareable Guest Access Link</h3>
-          <p className="text-[11px] text-slate-500">Generate temporary links for construction clients or site partners.</p>
-        </div>
-      </div>
-
-      {/* Generator controls */}
-      <div className="p-4 bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 rounded grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-        <div>
-          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
-            Permission Level
-          </label>
-          <select
-            value={accessLevel}
-            onChange={(e) => setAccessLevel(e.target.value as 'view' | 'edit')}
-            className="w-full p-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 dark:text-slate-100 cursor-pointer"
-          >
-            <option value="view">Read-Only (View drawings & models)</option>
-            <option value="edit">Read-Write (Add marks & evidence)</option>
-          </select>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+        <div className="flex items-center gap-2">
+          <Share2 className="h-5 w-5 text-blue-600 animate-pulse" />
+          <div>
+            <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider">Project Share Lines Portal</h3>
+            <p className="text-[11px] text-slate-500">Provide secure, temporary access links to guest clients or on-site team members.</p>
+          </div>
         </div>
 
-        <div>
-          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
-            Link Expiration
-          </label>
+        {/* Global Expiration Selector */}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
+            Link Expiration Preset:
+          </span>
           <select
             value={expiresInDays === null ? 'never' : expiresInDays}
             onChange={(e) => setExpiresInDays(e.target.value === 'never' ? null : Number(e.target.value))}
-            className="w-full p-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 dark:text-slate-100 cursor-pointer"
+            className="p-1 px-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded text-[11px] font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-800 dark:text-slate-100 cursor-pointer"
           >
-            <option value={1}>Expires in 1 Day</option>
-            <option value={7}>Expires in 7 Days</option>
-            <option value={30}>Expires in 30 Days</option>
-            <option value="never">Never Expires (Permanent)</option>
+            <option value={1}>1 Day</option>
+            <option value={7}>7 Days</option>
+            <option value={30}>30 Days</option>
+            <option value="never">Permanent</option>
           </select>
         </div>
-
-        <button
-          onClick={handleCreateLink}
-          disabled={generating}
-          className="w-full p-2 bg-blue-600 hover:bg-blue-700 text-white rounded cursor-pointer text-xs font-bold transition flex items-center justify-center gap-1.5 shadow"
-        >
-          {generating ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Generating...</span>
-            </>
-          ) : (
-            <>
-              <Share2 className="h-4 w-4" />
-              <span>Generate Access Link</span>
-            </>
-          )}
-        </button>
       </div>
 
       {error && (
@@ -170,9 +152,176 @@ export const ShareLinkGenerator: React.FC<ShareLinkGeneratorProps> = ({ projectI
         </div>
       )}
 
+      {/* Dual Share Lines Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        {/* 1. READ-ONLY SHARE LINE */}
+        <div className="p-5 bg-slate-50 dark:bg-slate-950/30 border border-slate-200 dark:border-slate-800 rounded-lg flex flex-col justify-between space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                <Eye className="h-3.5 w-3.5 text-blue-500" />
+                <span>Read-Only Guest Line</span>
+              </span>
+              <span className="text-[10px] font-semibold text-slate-400 uppercase">View Mode</span>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Provides access to view blueprints, models, active marks, and telemetry reports. Guests cannot make modifications or add annotations.
+            </p>
+          </div>
+
+          <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+            {activeViewLink ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                    Active Share Line
+                  </span>
+                  <span className="text-slate-400">Expires: {formatDate(activeViewLink.expiresAt)}</span>
+                </div>
+                
+                <div className="flex gap-2">
+                  <div className="flex-1 text-[11px] font-mono bg-white dark:bg-slate-950 p-2 rounded border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 truncate select-all">
+                    {`${window.location.origin}${window.location.pathname}?share=${activeViewLink.token}`}
+                  </div>
+                  <button
+                    onClick={() => handleCopyLink(activeViewLink.token)}
+                    className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded hover:text-blue-600 transition cursor-pointer flex items-center justify-center shrink-0"
+                    title="Copy Link"
+                  >
+                    {copiedToken === activeViewLink.token ? (
+                      <Check className="h-4 w-4 text-emerald-600" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleRevokeLink(activeViewLink.token)}
+                    className="p-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 text-rose-600 rounded transition cursor-pointer flex items-center justify-center shrink-0 border border-rose-100 dark:border-rose-900/30"
+                    title="Revoke Access"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => handleCreateLink('view')}
+                    disabled={generating}
+                    className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline cursor-pointer transition disabled:opacity-50"
+                  >
+                    + Generate New Replacement Link
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => handleCreateLink('view')}
+                disabled={generating}
+                className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                {generating ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Generating Secure Link...</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="h-3.5 w-3.5" />
+                    <span>Generate Read-Only Link</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 2. READ-WRITE SHARE LINE */}
+        <div className="p-5 bg-emerald-50/10 dark:bg-emerald-950/10 border border-emerald-100/60 dark:border-emerald-900/20 rounded-lg flex flex-col justify-between space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/30">
+                <Edit3 className="h-3.5 w-3.5 text-emerald-500" />
+                <span>Read-Write Guest Line</span>
+              </span>
+              <span className="text-[10px] font-semibold text-emerald-600 uppercase">Collaborate Mode</span>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Enables guests to view blueprints, models, active marks, AND actively log annotations, post site observations, and upload defect photos.
+            </p>
+          </div>
+
+          <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+            {activeEditLink ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                    Active Share Line
+                  </span>
+                  <span className="text-slate-400">Expires: {formatDate(activeEditLink.expiresAt)}</span>
+                </div>
+                
+                <div className="flex gap-2">
+                  <div className="flex-1 text-[11px] font-mono bg-white dark:bg-slate-950 p-2 rounded border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 truncate select-all">
+                    {`${window.location.origin}${window.location.pathname}?share=${activeEditLink.token}`}
+                  </div>
+                  <button
+                    onClick={() => handleCopyLink(activeEditLink.token)}
+                    className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-850 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded hover:text-blue-600 transition cursor-pointer flex items-center justify-center shrink-0"
+                    title="Copy Link"
+                  >
+                    {copiedToken === activeEditLink.token ? (
+                      <Check className="h-4 w-4 text-emerald-600" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleRevokeLink(activeEditLink.token)}
+                    className="p-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 text-rose-600 rounded transition cursor-pointer flex items-center justify-center shrink-0 border border-rose-100 dark:border-rose-900/30"
+                    title="Revoke Access"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => handleCreateLink('edit')}
+                    disabled={generating}
+                    className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 hover:underline cursor-pointer transition disabled:opacity-50"
+                  >
+                    + Generate New Replacement Link
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => handleCreateLink('edit')}
+                disabled={generating}
+                className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+              >
+                {generating ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Generating Secure Link...</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="h-3.5 w-3.5" />
+                    <span>Generate Read-Write Link</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+
+      </div>
+
       {/* Generated Links List */}
-      <div className="space-y-3">
-        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Guest Links</h4>
+      <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Guest Links History</h4>
 
         {loading ? (
           <div className="flex items-center gap-2 text-slate-400 text-xs py-4">
@@ -181,7 +330,7 @@ export const ShareLinkGenerator: React.FC<ShareLinkGeneratorProps> = ({ projectI
           </div>
         ) : links.length === 0 ? (
           <div className="text-center py-6 text-xs text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded">
-            No active share links. Generate one above to invite guest engineers.
+            No active share links. Generate one of the share lines above to invite guest engineers.
           </div>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded overflow-hidden bg-white dark:bg-slate-950">

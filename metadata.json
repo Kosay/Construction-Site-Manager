@@ -1,7 +1,7 @@
 {
   "name": "Construction Site Manager",
   "description": "Manage construction site works, safety observations, and drawings with interactive geometric marks and evidence photos.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera", "geolocation"],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

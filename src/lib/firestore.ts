@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
 import { Project, Drawing, Model, Mark, ShareLink, EvidencePhoto, MapPoint, CalibrationPoint } from '../types';
+import { deleteFileByUrl } from './storage';
 
 // Helper to generate a unique token
 export function generateToken(): string {
@@ -55,11 +56,23 @@ export async function createProject(
 }
 
 /**
- * Deletes a project from Firestore along with all associated drawings, marks, models, members, and share links.
+ * Deletes a project from Firestore along with all associated drawings, marks, models, members, and share links,
+ * and cleans up all associated files in Firebase Storage.
  */
 export async function deleteProject(projectId: string): Promise<void> {
   const path = `projects/${projectId}`;
   try {
+    const urlsToDelete: string[] = [];
+
+    // 0. Get parent project to check for KML map overlay URL
+    const projectSnap = await getDoc(doc(db, 'projects', projectId));
+    if (projectSnap.exists()) {
+      const projectData = projectSnap.data();
+      if (projectData?.kmlUrl) {
+        urlsToDelete.push(projectData.kmlUrl);
+      }
+    }
+
     // 1. Delete all shareLinks associated with this project
     const shareLinksSnap = await getDocs(
       query(collection(db, 'shareLinks'), where('projectId', '==', projectId))
@@ -69,28 +82,42 @@ export async function deleteProject(projectId: string): Promise<void> {
     );
     await Promise.all(deleteShareLinkPromises);
 
-    // 2. Delete all drawings and their subcollection of marks
+    // 2. Delete all drawings and their subcollection of marks, collecting blueprint and evidence photo URLs
     const drawingsSnap = await getDocs(collection(db, 'projects', projectId, 'drawings'));
     for (const drawingDoc of drawingsSnap.docs) {
       const drawingId = drawingDoc.id;
+      const drawingData = drawingDoc.data();
+      if (drawingData?.url) {
+        urlsToDelete.push(drawingData.url);
+      }
       
-      // Delete all marks inside this drawing
+      // Delete all marks inside this drawing and collect their evidence photo URLs
       const marksSnap = await getDocs(collection(db, 'projects', projectId, 'drawings', drawingId, 'marks'));
-      const deleteMarkPromises = marksSnap.docs.map((markDoc) => 
-        deleteDoc(doc(db, 'projects', projectId, 'drawings', drawingId, 'marks', markDoc.id))
-      );
-      await Promise.all(deleteMarkPromises);
+      for (const markDoc of marksSnap.docs) {
+        const markData = markDoc.data();
+        if (markData?.evidencePhotos) {
+          for (const photo of markData.evidencePhotos) {
+            if (photo.url) {
+              urlsToDelete.push(photo.url);
+            }
+          }
+        }
+        await deleteDoc(doc(db, 'projects', projectId, 'drawings', drawingId, 'marks', markDoc.id));
+      }
 
       // Delete the drawing document
       await deleteDoc(doc(db, 'projects', projectId, 'drawings', drawingId));
     }
 
-    // 3. Delete all models under projects/${projectId}/models
+    // 3. Delete all models under projects/${projectId}/models, collecting GLB model URLs
     const modelsSnap = await getDocs(collection(db, 'projects', projectId, 'models'));
-    const deleteModelPromises = modelsSnap.docs.map((modelDoc) => 
-      deleteDoc(doc(db, 'projects', projectId, 'models', modelDoc.id))
-    );
-    await Promise.all(deleteModelPromises);
+    for (const modelDoc of modelsSnap.docs) {
+      const modelData = modelDoc.data();
+      if (modelData?.url) {
+        urlsToDelete.push(modelData.url);
+      }
+      await deleteDoc(doc(db, 'projects', projectId, 'models', modelDoc.id));
+    }
 
     // 4. Delete all members under projects/${projectId}/members
     const membersSnap = await getDocs(collection(db, 'projects', projectId, 'members'));
@@ -99,15 +126,28 @@ export async function deleteProject(projectId: string): Promise<void> {
     );
     await Promise.all(deleteMemberPromises);
 
-    // 5. Delete all map points under projects/${projectId}/mapPoints
+    // 5. Delete all map points under projects/${projectId}/mapPoints, collecting map evidence photo URLs
     const mapPointsSnap = await getDocs(collection(db, 'projects', projectId, 'mapPoints'));
-    const deleteMapPointPromises = mapPointsSnap.docs.map((pointDoc) =>
-      deleteDoc(doc(db, 'projects', projectId, 'mapPoints', pointDoc.id))
-    );
-    await Promise.all(deleteMapPointPromises);
+    for (const pointDoc of mapPointsSnap.docs) {
+      const pointData = pointDoc.data();
+      if (pointData?.evidencePhotos) {
+        for (const photo of pointData.evidencePhotos) {
+          if (photo.url) {
+            urlsToDelete.push(photo.url);
+          }
+        }
+      }
+      await deleteDoc(doc(db, 'projects', projectId, 'mapPoints', pointDoc.id));
+    }
 
     // 6. Finally, delete the parent project document itself
     await deleteDoc(doc(db, 'projects', projectId));
+
+    // 7. Fire-and-forget or await the deletion of all storage files
+    if (urlsToDelete.length > 0) {
+      console.log(`Cleaning up ${urlsToDelete.length} storage files for project ${projectId}...`);
+      await Promise.all(urlsToDelete.map(url => deleteFileByUrl(url)));
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }

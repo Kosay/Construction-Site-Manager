@@ -14,7 +14,12 @@ interface MapViewerProps {
   shareToken?: string;
 }
 
-const GOOGLE_MAPS_API_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY || '';
+const GOOGLE_MAPS_API_KEY =
+  process.env.GOOGLE_MAPS_PLATFORM_KEY ||
+  (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ||
+  process.env.VITE_GOOGLE_MAPS_API_KEY ||
+  (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
+  '';
 
 const CATEGORY_COLORS: Record<string, string> = {
   safety: '#f43f5e',
@@ -181,13 +186,42 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
     },
   ];
 
-  if (!GOOGLE_MAPS_API_KEY) {
+  if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY === 'YOUR_API_KEY' || GOOGLE_MAPS_API_KEY === 'your_google_maps_api_key_here') {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-slate-100 dark:bg-slate-950">
-        <div className="text-center p-6">
-          <AlertTriangle className="h-10 w-10 text-amber-500 mx-auto mb-2" />
-          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Google Maps API Key Not Configured</p>
-          <p className="text-xs text-slate-500 mt-1">Set VITE_GOOGLE_MAPS_API_KEY environment variable</p>
+      <div className="w-full h-full flex items-center justify-center bg-slate-100 dark:bg-slate-950 p-6">
+        <div className="text-center max-w-md bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl space-y-4">
+          <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center mx-auto text-blue-600 dark:text-blue-400">
+            <Layers className="h-6 w-6 animate-pulse" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">Google Maps API Key Required</h2>
+          <p className="text-xs text-slate-600 dark:text-slate-400">
+            A Google Maps API Key is required to visualize the site map, KML layers, and coordinate mark points on Google Maps.
+          </p>
+          
+          <div className="text-left space-y-3 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-150 dark:border-slate-850 text-xs">
+            <p className="font-semibold text-slate-800 dark:text-slate-200">Easy Setup Steps:</p>
+            <ol className="list-decimal list-inside space-y-2 text-slate-600 dark:text-slate-400">
+              <li>
+                <a 
+                  href="https://console.cloud.google.com/google/maps-apis/start?utm_campaign=gmp-code-assist-ais" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 dark:text-blue-400 font-semibold hover:underline"
+                >
+                  Get an API Key from Google Cloud
+                </a>
+              </li>
+              <li>
+                When the <span className="font-semibold text-slate-800 dark:text-slate-200">"Enter your environment variable"</span> popup appears, paste your API key and press <kbd className="bg-slate-200 dark:bg-slate-800 px-1 border border-slate-300 dark:border-slate-750 rounded text-[10px]">Enter</kbd>.
+              </li>
+              <li>
+                Or manually: Open <span className="font-semibold text-slate-800 dark:text-slate-200">Settings</span> (⚙️ gear icon, top-right) → <span className="font-semibold text-slate-800 dark:text-slate-200">Secrets</span> → add <code className="bg-slate-200 dark:bg-slate-850 px-1 py-0.5 rounded text-red-500 font-mono">GOOGLE_MAPS_PLATFORM_KEY</code> → paste value.
+              </li>
+            </ol>
+          </div>
+          <p className="text-[10px] text-slate-500 dark:text-slate-400">
+            The app automatically rebuilds and loads when the key is added. No manual reload needed.
+          </p>
         </div>
       </div>
     );

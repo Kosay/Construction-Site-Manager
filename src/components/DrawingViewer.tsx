@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MousePointer, Circle, Square, Minus, MessageSquare, Plus, Check, X, ShieldAlert, Loader2, Search, Filter, User, Layers, Eye, EyeOff, ZoomIn, ZoomOut, Maximize2, Expand, Shrink, MapPin } from 'lucide-react';
+import { MousePointer, Circle, Square, Minus, MessageSquare, Plus, Check, X, ShieldAlert, Loader2, Search, Filter, User, Layers, Eye, EyeOff, ZoomIn, ZoomOut, Maximize2, Expand, Shrink, MapPin, Camera, Trash2, UploadCloud, Calendar } from 'lucide-react';
 import { Mark, MarkCoordinates, CalibrationPoint, Project } from '../types';
 import { addMark, getProject } from '../lib/firestore';
+import { uploadFile } from '../lib/storage';
 import { MarkDetailsModal } from './MarkDetailsModal';
 import { useAuth } from '../lib/authContext';
 import { calculateTransformMatrix, gpsToDrawingCoordinates } from '../lib/coordinateTransform';
+import { BrowserCameraViewfinder } from './BrowserCameraViewfinder';
 
 interface DrawingViewerProps {
   projectId: string;
@@ -43,6 +45,19 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
   const [newMarkLabel, setNewMarkLabel] = useState('');
   const [newMarkCategory, setNewMarkCategory] = useState<'safety' | 'measurement' | 'defect' | 'general' | 'progress' | 'quality' | 'other'>('general');
   const [creating, setCreating] = useState(false);
+  const [newMarkPhotoFile, setNewMarkPhotoFile] = useState<File | null>(null);
+  const [newMarkPhotoPreviewUrl, setNewMarkPhotoPreviewUrl] = useState<string | null>(null);
+  const [showNewMarkCamera, setShowNewMarkCamera] = useState(false);
+
+  // GPS Camera capture workflow states
+  const [showGpsCameraModal, setShowGpsCameraModal] = useState(false);
+  const [gpsLoadingMessage, setGpsLoadingMessage] = useState<string | null>(null);
+  const [gpsCalculatedCoords, setGpsCalculatedCoords] = useState<{ x: number; y: number; lat: number; lng: number; accuracy: number } | null>(null);
+  const [gpsPhotoFile, setGpsPhotoFile] = useState<File | null>(null);
+  const [gpsPhotoPreviewUrl, setGpsPhotoPreviewUrl] = useState<string | null>(null);
+  const [gpsPhotoLabel, setGpsPhotoLabel] = useState('');
+  const [gpsPhotoCategory, setGpsPhotoCategory] = useState<'safety' | 'measurement' | 'defect' | 'general' | 'progress' | 'quality' | 'other'>('safety');
+  const [gpsUploading, setGpsUploading] = useState(false);
 
   // Sidebar, search, and filtering states
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -50,6 +65,8 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
   const [filterType, setFilterType] = useState<string>('all');
   const [filterCreator, setFilterCreator] = useState<string>('all');
   const [filterCategories, setFilterCategories] = useState<string[]>(['safety', 'measurement', 'defect', 'general', 'progress', 'quality', 'other']);
+  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  const [filterEndDate, setFilterEndDate] = useState<string>('');
   const [hideFilteredOnCanvas, setHideFilteredOnCanvas] = useState(false);
 
   // Zoom State
@@ -96,14 +113,36 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
   });
   const uniqueCreators = Array.from(uniqueCreatorsMap.entries()).map(([id, name]) => ({ id, name }));
 
-  // Filter marks based on searchQuery, filterType, filterCreator, and filterCategories
+  // Filter marks based on searchQuery, filterType, filterCreator, filterCategories, and date range
   const filteredMarks = marks.filter(mark => {
     const labelMatch = mark.label.toLowerCase().includes(searchQuery.toLowerCase());
     const typeMatch = filterType === 'all' || mark.type === filterType;
     const creatorMatch = filterCreator === 'all' || mark.createdBy === filterCreator;
     const markCategory = mark.category || 'general';
     const categoryMatch = filterCategories.includes(markCategory);
-    return labelMatch && typeMatch && creatorMatch && categoryMatch;
+    
+    let dateMatch = true;
+    if (filterStartDate || filterEndDate) {
+      const markDate = mark.createdAt
+        ? (mark.createdAt.toDate ? mark.createdAt.toDate() : new Date(mark.createdAt))
+        : null;
+      if (markDate) {
+        if (filterStartDate) {
+          const start = new Date(filterStartDate);
+          start.setHours(0, 0, 0, 0);
+          if (markDate < start) dateMatch = false;
+        }
+        if (filterEndDate) {
+          const end = new Date(filterEndDate);
+          end.setHours(23, 59, 59, 999);
+          if (markDate > end) dateMatch = false;
+        }
+      } else {
+        dateMatch = false;
+      }
+    }
+
+    return labelMatch && typeMatch && creatorMatch && categoryMatch && dateMatch;
   });
 
   const getCategoryTheme = (category?: string) => {
@@ -478,7 +517,22 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
       const authorUid = shareToken ? `anonymous_${shareToken.substring(0, 5)}` : (user?.uid || 'admin');
       const authorName = localStorage.getItem('custom_display_name') || user?.displayName || user?.email || (authorUid === 'admin' ? 'Project Owner' : authorUid);
 
-      // Try to capture GPS coordinates on mobile
+      const tempMarkId = Math.random().toString(36).substring(2, 11);
+
+      // 1. Upload photo if snapped
+      const evidencePhotos = [];
+      if (newMarkPhotoFile) {
+        const fileExtension = newMarkPhotoFile.name.split('.').pop() || 'jpg';
+        const photoPath = `projects/${projectId}/drawings/${drawingId}/marks/${tempMarkId}/evidence/${Date.now()}.${fileExtension}`;
+        const downloadUrl = await uploadFile(photoPath, newMarkPhotoFile);
+        evidencePhotos.push({
+          photoId: Math.random().toString(36).substring(2, 11),
+          url: downloadUrl,
+          uploadedAt: new Date().toISOString()
+        });
+      }
+
+      // 2. Try to capture GPS coordinates on mobile
       let finalCoords = newMarkCoords;
       let metadata: any = {
         timestamp: new Date().toISOString(),
@@ -515,7 +569,7 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
         createdByName: authorName,
         category: newMarkCategory,
         metadata,
-        evidencePhotos: []
+        evidencePhotos
       }, shareToken);
 
       onUpdate();
@@ -523,6 +577,10 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
       setNewMarkCoords(null);
       setNewMarkLabel('');
       setNewMarkCategory('general');
+      setNewMarkPhotoFile(null);
+      if (newMarkPhotoPreviewUrl) URL.revokeObjectURL(newMarkPhotoPreviewUrl);
+      setNewMarkPhotoPreviewUrl(null);
+      setShowNewMarkCamera(false);
       setGpsCoords(null);
       setActiveTool('select');
     } catch (error) {
@@ -531,6 +589,138 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
     } finally {
       setCreating(false);
       setGpsLoading(false);
+    }
+  };
+
+  const handleGpsPhotoClick = () => {
+    if (!project || !project.calibrationPoints || project.calibrationPoints.length < 3) {
+      alert("This project has not been calibrated with 3 reference points. Please contact the project manager to set up 3-point calibration first.");
+      return;
+    }
+
+    if (!('geolocation' in navigator)) {
+      alert("Your browser/device does not support GPS Geolocation.");
+      return;
+    }
+
+    setGpsLoadingMessage("Acquiring high-accuracy GPS coordinates...");
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        console.log("GPS Location:", latitude, longitude, "Accuracy:", accuracy);
+
+        try {
+          const matrix = calculateTransformMatrix(project.calibrationPoints!);
+          const drawingCoords = gpsToDrawingCoordinates(latitude, longitude, matrix);
+          console.log("Mapped drawing coords:", drawingCoords);
+
+          // Allow some margin, say [-20, 120]%, but notify if completely off site
+          if (drawingCoords.x < -20 || drawingCoords.x > 120 || drawingCoords.y < -20 || drawingCoords.y > 120) {
+            setGpsLoadingMessage(null);
+            alert(`Your current GPS position (Lat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)}) translates to coordinates (${drawingCoords.x.toFixed(1)}%, ${drawingCoords.y.toFixed(1)}%) which is far outside this blueprint. Please make sure you are standing on-site.`);
+            return;
+          }
+
+          // Clamp to [0, 100] for safety
+          const clampedX = Math.max(0, Math.min(100, drawingCoords.x));
+          const clampedY = Math.max(0, Math.min(100, drawingCoords.y));
+
+          setGpsCalculatedCoords({
+            x: clampedX,
+            y: clampedY,
+            lat: latitude,
+            lng: longitude,
+            accuracy: accuracy
+          });
+          setGpsPhotoFile(null);
+          setGpsPhotoPreviewUrl(null);
+          setGpsPhotoLabel('');
+          setGpsPhotoCategory('safety');
+          setGpsLoadingMessage(null);
+          setShowGpsCameraModal(true);
+        } catch (err) {
+          console.error("Coordinate mapping error:", err);
+          setGpsLoadingMessage(null);
+          alert("Error calculating location on blueprint. Please verify that calibration points are correct.");
+        }
+      },
+      (error) => {
+        setGpsLoadingMessage(null);
+        let errorMsg = "Unable to fetch GPS position.";
+        if (error.code === error.PERMISSION_DENIED) {
+          errorMsg = "GPS permission denied. Please allow location access in your device settings.";
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          errorMsg = "GPS position unavailable. Make sure your location services are enabled.";
+        } else if (error.code === error.TIMEOUT) {
+          errorMsg = "GPS acquisition timed out. Try again in an open-sky area.";
+        }
+        alert(errorMsg);
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+  };
+
+  const handleSaveGpsPhoto = async () => {
+    if (!gpsCalculatedCoords || !gpsPhotoLabel.trim()) return;
+    setGpsUploading(true);
+
+    try {
+      const authorUid = shareToken ? `anonymous_${shareToken.substring(0, 5)}` : (user?.uid || 'admin');
+      const authorName = localStorage.getItem('custom_display_name') || user?.displayName || user?.email || (authorUid === 'admin' ? 'Project Owner' : authorUid);
+
+      const tempMarkId = Math.random().toString(36).substring(2, 11);
+
+      // 1. Upload photo if selected
+      const evidencePhotos = [];
+      if (gpsPhotoFile) {
+        const fileExtension = gpsPhotoFile.name.split('.').pop() || 'jpg';
+        const photoPath = `projects/${projectId}/drawings/${drawingId}/marks/${tempMarkId}/evidence/${Date.now()}.${fileExtension}`;
+        const downloadUrl = await uploadFile(photoPath, gpsPhotoFile);
+        evidencePhotos.push({
+          photoId: Math.random().toString(36).substring(2, 11),
+          url: downloadUrl,
+          uploadedAt: new Date().toISOString()
+        });
+      }
+
+      // 2. Prepare metadata with exact current time
+      const metadata = {
+        timestamp: new Date().toISOString(),
+        gpsLat: gpsCalculatedCoords.lat,
+        gpsLng: gpsCalculatedCoords.lng,
+        gpsAccuracy: gpsCalculatedCoords.accuracy,
+        deviceInfo: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? 'Android/Mobile' : 'Desktop'
+      };
+
+      // 3. Save mark to Firestore
+      await addMark(projectId, drawingId, {
+        type: 'circle',
+        coordinates: {
+          x: gpsCalculatedCoords.x,
+          y: gpsCalculatedCoords.y,
+          radius: 4
+        },
+        label: gpsPhotoLabel.trim(),
+        createdBy: authorUid,
+        createdByName: authorName,
+        category: gpsPhotoCategory,
+        metadata,
+        evidencePhotos
+      }, shareToken);
+
+      // Refresh
+      onUpdate();
+      setShowGpsCameraModal(false);
+      setGpsCalculatedCoords(null);
+      setGpsPhotoFile(null);
+      if (gpsPhotoPreviewUrl) URL.revokeObjectURL(gpsPhotoPreviewUrl);
+      setGpsPhotoPreviewUrl(null);
+    } catch (err) {
+      console.error("Failed to save GPS photo mark:", err);
+      alert("Failed to save GPS photo mark: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setGpsUploading(false);
     }
   };
 
@@ -580,6 +770,18 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
           {/* Creation Toolbelt (only show if canEdit is true) */}
           {canEdit && (
             <>
+              <span className="text-slate-200 dark:text-slate-800 mx-1 font-light">|</span>
+
+              {/* GPS Camera Photo Button */}
+              <button
+                onClick={handleGpsPhotoClick}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded border transition cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow border-blue-600"
+                title="Use Android GPS and Camera to capture a photo at your current site location"
+              >
+                <Camera className="h-3.5 w-3.5 animate-pulse" />
+                <span>Take GPS Photo</span>
+              </button>
+
               <span className="text-slate-200 dark:text-slate-800 mx-1 font-light">|</span>
               
               {/* Circle Mark Tool */}
@@ -781,6 +983,80 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
                       </option>
                     ))}
                 </select>
+              </div>
+
+              {/* Filter by Date Range */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <Calendar className="h-3 w-3 text-blue-500" />
+                    Date Range Window
+                  </label>
+                  {(filterStartDate || filterEndDate) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilterStartDate('');
+                        setFilterEndDate('');
+                      }}
+                      className="text-[9px] font-bold text-rose-500 hover:text-rose-600 cursor-pointer hover:underline uppercase transition-colors"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[8px] font-semibold text-slate-400 dark:text-slate-500 block mb-0.5 uppercase">From</span>
+                    <input
+                      type="date"
+                      value={filterStartDate}
+                      onChange={(e) => setFilterStartDate(e.target.value)}
+                      className="w-full p-1 py-0.5 text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[8px] font-semibold text-slate-400 dark:text-slate-500 block mb-0.5 uppercase">To</span>
+                    <input
+                      type="date"
+                      value={filterEndDate}
+                      onChange={(e) => setFilterEndDate(e.target.value)}
+                      className="w-full p-1 py-0.5 text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {[
+                    { label: 'Today', days: 0 },
+                    { label: '7 Days', days: 7 },
+                    { label: '30 Days', days: 30 }
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        const today = new Date();
+                        const todayStr = today.toISOString().split('T')[0];
+                        if (preset.days === 0) {
+                          setFilterStartDate(todayStr);
+                          setFilterEndDate(todayStr);
+                        } else {
+                          const pastDate = new Date();
+                          pastDate.setDate(today.getDate() - preset.days);
+                          const pastStr = pastDate.toISOString().split('T')[0];
+                          setFilterStartDate(pastStr);
+                          setFilterEndDate(todayStr);
+                        }
+                      }}
+                      className="px-1.5 py-0.5 text-[9px] font-medium bg-slate-100 dark:bg-slate-850 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 rounded transition cursor-pointer"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Filter by Category Checklist */}
@@ -1180,14 +1456,106 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
               </div>
             </div>
 
+            {/* Direct Camera Snapshot for Standard Mark */}
+            <div className="mt-4">
+              <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
+                Attach Evidence Photo (Optional)
+              </label>
+
+              {newMarkPhotoPreviewUrl ? (
+                <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow bg-slate-50">
+                  <img
+                    src={newMarkPhotoPreviewUrl}
+                    alt="Captured observation"
+                    className="w-full h-40 object-cover block"
+                    referrerPolicy="no-referrer"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewMarkPhotoFile(null);
+                      if (newMarkPhotoPreviewUrl) URL.revokeObjectURL(newMarkPhotoPreviewUrl);
+                      setNewMarkPhotoPreviewUrl(null);
+                    }}
+                    className="absolute top-2 right-2 p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-full shadow cursor-pointer animate-fade-in"
+                    title="Discard Photo"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : showNewMarkCamera ? (
+                <div className="space-y-2">
+                  <BrowserCameraViewfinder
+                    idealFacingMode="environment"
+                    onCapture={(file, previewUrl) => {
+                      setNewMarkPhotoFile(file);
+                      setNewMarkPhotoPreviewUrl(previewUrl);
+                      setShowNewMarkCamera(false);
+                    }}
+                    onCancel={() => setShowNewMarkCamera(false)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewMarkCamera(false)}
+                    className="w-full py-1.5 text-center text-xs text-slate-500 hover:text-slate-700 font-semibold cursor-pointer"
+                  >
+                    Cancel Camera
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewMarkCamera(true)}
+                    className="flex-1 py-3 px-4 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-slate-800 hover:border-blue-500 hover:bg-blue-50/20 dark:hover:bg-blue-950/10 rounded-xl cursor-pointer transition text-center shadow-sm"
+                  >
+                    <Camera className="h-5 w-5 text-slate-400 mb-1" />
+                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                      SNAP WITH APP CAMERA
+                    </span>
+                  </button>
+
+                  <div className="relative flex-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          const file = e.target.files[0];
+                          setNewMarkPhotoFile(file);
+                          setNewMarkPhotoPreviewUrl(URL.createObjectURL(file));
+                        }
+                      }}
+                      className="hidden"
+                      id="standard-camera-file-input"
+                    />
+                    <label
+                      htmlFor="standard-camera-file-input"
+                      className="w-full h-full py-3 px-4 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-slate-800 hover:border-blue-500 hover:bg-blue-50/20 dark:hover:bg-blue-950/10 rounded-xl cursor-pointer transition text-center shadow-sm"
+                    >
+                      <UploadCloud className="h-5 w-5 text-slate-400 mb-1" />
+                      <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                        UPLOAD / FILE SELECT
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="mt-5 flex justify-end gap-2 text-sm font-medium">
               <button
                 onClick={() => {
                   setShowCreateDialog(false);
                   setNewMarkCoords(null);
+                  setNewMarkPhotoFile(null);
+                  if (newMarkPhotoPreviewUrl) URL.revokeObjectURL(newMarkPhotoPreviewUrl);
+                  setNewMarkPhotoPreviewUrl(null);
+                  setShowNewMarkCamera(false);
                 }}
                 disabled={creating}
-                className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-50 rounded-lg cursor-pointer text-slate-600"
+                className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900 rounded-lg cursor-pointer text-slate-600 dark:text-slate-400"
               >
                 Discard
               </button>
@@ -1221,6 +1589,223 @@ export const DrawingViewer: React.FC<DrawingViewerProps> = ({
           canEdit={canEdit}
           shareToken={shareToken}
         />
+      )}
+
+      {/* Loading Overlay for GPS acquisition */}
+      {gpsLoadingMessage && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-md text-white p-4">
+          <Loader2 className="h-10 w-10 text-blue-400 animate-spin mb-4" />
+          <p className="text-sm font-bold font-mono tracking-wider animate-pulse uppercase text-center">
+            {gpsLoadingMessage}
+          </p>
+          <p className="text-[10px] text-slate-400 mt-2 max-w-xs text-center">
+            Make sure your device location / GPS services are turned on with high accuracy mode.
+          </p>
+        </div>
+      )}
+
+      {/* GPS Camera Photo Capture Modal */}
+      {showGpsCameraModal && gpsCalculatedCoords && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-md overflow-y-auto p-4 animate-fade-in">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-950 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-blue-100 dark:bg-blue-950/40 text-blue-600 rounded-lg">
+                  <Camera className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                    GPS Photo Capture
+                  </h4>
+                  <p className="text-[10px] text-slate-400">
+                    Auto-aligned to: X: {gpsCalculatedCoords.x.toFixed(1)}%, Y: {gpsCalculatedCoords.y.toFixed(1)}%
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowGpsCameraModal(false);
+                  setGpsCalculatedCoords(null);
+                  setGpsPhotoFile(null);
+                  if (gpsPhotoPreviewUrl) URL.revokeObjectURL(gpsPhotoPreviewUrl);
+                  setGpsPhotoPreviewUrl(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-1 rounded-full hover:bg-slate-50 dark:hover:bg-slate-900"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+              {/* GPS Info Stats Card */}
+              <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200/50 dark:border-slate-800 flex items-start justify-between text-[10px] font-semibold text-slate-500">
+                <div className="space-y-1">
+                  <p className="flex items-center gap-1">
+                    <MapPin className="h-3 w-3 text-emerald-500" />
+                    <span>GPS Coordinates:</span>
+                  </p>
+                  <p className="font-mono text-slate-700 dark:text-slate-300">
+                    Lat: {gpsCalculatedCoords.lat.toFixed(6)}, Lng: {gpsCalculatedCoords.lng.toFixed(6)}
+                  </p>
+                </div>
+                <div className="text-right space-y-1">
+                  <p>Accuracy: ±{gpsCalculatedCoords.accuracy.toFixed(1)}m</p>
+                  <p>Time: {new Date().toLocaleTimeString()}</p>
+                </div>
+              </div>
+
+              {/* Photo Input / Preview Area */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
+                  Observation Photo *
+                </label>
+                
+                {gpsPhotoPreviewUrl ? (
+                  <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow bg-slate-50">
+                    <img 
+                      src={gpsPhotoPreviewUrl} 
+                      alt="Captured site observation" 
+                      className="w-full h-48 object-cover block"
+                      referrerPolicy="no-referrer"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGpsPhotoFile(null);
+                        if (gpsPhotoPreviewUrl) URL.revokeObjectURL(gpsPhotoPreviewUrl);
+                        setGpsPhotoPreviewUrl(null);
+                      }}
+                      className="absolute top-2 right-2 p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-full shadow cursor-pointer"
+                      title="Discard Photo"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <BrowserCameraViewfinder
+                      idealFacingMode="environment"
+                      onCapture={(file, previewUrl) => {
+                        setGpsPhotoFile(file);
+                        setGpsPhotoPreviewUrl(previewUrl);
+                      }}
+                    />
+                    <div className="text-center">
+                      <span className="text-[10px] text-slate-400">or upload / capture using native device camera:</span>
+                    </div>
+                    <div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            const file = e.target.files[0];
+                            setGpsPhotoFile(file);
+                            setGpsPhotoPreviewUrl(URL.createObjectURL(file));
+                          }
+                        }}
+                        className="hidden"
+                        id="gps-camera-file-input"
+                      />
+                      <label
+                        htmlFor="gps-camera-file-input"
+                        className="w-full py-2.5 px-4 flex items-center justify-center gap-2 border border-dashed border-slate-300 dark:border-slate-800 hover:border-blue-500 hover:bg-blue-50/20 dark:hover:bg-blue-950/10 rounded-xl cursor-pointer transition text-center shadow-sm text-xs font-bold text-slate-700 dark:text-slate-300"
+                      >
+                        <UploadCloud className="h-4 w-4 text-slate-400 animate-pulse" />
+                        <span>Use Native Camera / File Upload</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Description Input */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
+                  Observation Description *
+                </label>
+                <input
+                  type="text"
+                  value={gpsPhotoLabel}
+                  onChange={(e) => setGpsPhotoLabel(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl text-xs font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-900 dark:text-slate-100"
+                  placeholder="e.g. Broken guardrail on slab edge, concrete cracks detected"
+                  maxLength={150}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && gpsPhotoLabel.trim() && gpsPhotoFile) {
+                      handleSaveGpsPhoto();
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Category Selector */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
+                  Classification Category
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'safety', label: '⚠️ Safety Obs.', bg: 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-400' },
+                    { id: 'measurement', label: '📐 Measurement', bg: 'bg-sky-50 dark:bg-sky-950/20 border-sky-200 dark:border-sky-900/50 text-sky-700 dark:text-sky-400' },
+                    { id: 'defect', label: '❌ Defect/Issue', bg: 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50 text-amber-700 dark:text-amber-400' },
+                    { id: 'progress', label: '🚧 Progress', bg: 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400' },
+                    { id: 'quality', label: '🔍 Quality Ctrl', bg: 'bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900/50 text-purple-700 dark:text-purple-400' },
+                    { id: 'general', label: '📋 General Slate', bg: 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-400' },
+                    { id: 'other', label: '📌 Other / Note', bg: 'bg-indigo-50 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-400' }
+                  ].map((cat) => {
+                    const isSelected = gpsPhotoCategory === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setGpsPhotoCategory(cat.id as any)}
+                        className={`px-3 py-2 text-xs font-semibold rounded-lg border transition text-left flex items-center justify-between cursor-pointer ${
+                          isSelected 
+                            ? `${cat.bg} border-2 ring-1 ring-blue-500/50` 
+                            : 'bg-white hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                        }`}
+                      >
+                        <span>{cat.label}</span>
+                        {isSelected && <Check className="h-3.5 w-3.5" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2 text-sm font-medium">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGpsCameraModal(false);
+                  setGpsCalculatedCoords(null);
+                  setGpsPhotoFile(null);
+                  if (gpsPhotoPreviewUrl) URL.revokeObjectURL(gpsPhotoPreviewUrl);
+                  setGpsPhotoPreviewUrl(null);
+                }}
+                disabled={gpsUploading}
+                className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-50 rounded-lg cursor-pointer text-slate-600 dark:border-slate-800 dark:text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveGpsPhoto}
+                disabled={gpsUploading || !gpsPhotoLabel.trim() || !gpsPhotoFile}
+                className="px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                {gpsUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                <span>Save to Map</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

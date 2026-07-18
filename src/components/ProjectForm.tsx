@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { LayoutGrid, FileText, UploadCloud, Check, AlertCircle, Loader2 } from 'lucide-react';
+import { LayoutGrid, FileText, UploadCloud, Check, AlertCircle, Loader2, Box } from 'lucide-react';
 import { uploadFile } from '../lib/storage';
-import { createProject, addDrawing } from '../lib/firestore';
+import { createProject, addDrawing, addModel } from '../lib/firestore';
+import { convertPdfToImage } from '../lib/pdfConverter';
 import { CalibrationPointSetup } from './CalibrationPointSetup';
 import { CalibrationPoint } from '../types';
 
@@ -18,9 +19,11 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
   // Files state
   const [drawingFile, setDrawingFile] = useState<File | null>(null);
   const [kmlFile, setKmlFile] = useState<File | null>(null);
+  const [glbFile, setGlbFile] = useState<File | null>(null);
 
   // Status state
   const [submitting, setSubmitting] = useState(false);
+  const [convertingPdf, setConvertingPdf] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
@@ -33,20 +36,33 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
 
   const drawingInputRef = useRef<HTMLInputElement>(null);
   const kmlInputRef = useRef<HTMLInputElement>(null);
+  const glbInputRef = useRef<HTMLInputElement>(null);
 
-  const handleDrawingChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDrawingChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       const isImage = file.type.startsWith('image/');
       const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
       if (isPdf) {
-        setError('PDF drawings are not supported for calibration at this time. Please use PNG or JPG instead.');
+        setConvertingPdf(true);
+        setError(null);
+        try {
+          const imageFile = await convertPdfToImage(file);
+          setDrawingFile(imageFile);
+          setError(null);
+        } catch (err) {
+          console.error("PDF to Image conversion error:", err);
+          setError(err instanceof Error ? err.message : 'Failed to convert PDF blueprint to image.');
+          setDrawingFile(null);
+        } finally {
+          setConvertingPdf(false);
+        }
         return;
       }
 
       if (!isImage) {
-        setError('Drawings must be a .png, .jpg, or .jpeg file.');
+        setError('Drawings must be a .png, .jpg, .jpeg, or .pdf file.');
         return;
       }
 
@@ -71,6 +87,22 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
         return;
       }
       setKmlFile(file);
+      setError(null);
+    }
+  };
+
+  const handleGlbChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (!file.name.toLowerCase().endsWith('.glb')) {
+        setError('3D BIM model must be a .glb file.');
+        return;
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        setError('GLB file exceeds the 50MB limit.');
+        return;
+      }
+      setGlbFile(file);
       setError(null);
     }
   };
@@ -142,6 +174,14 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
       const drawingPath = `projects/${projectId}/drawings/${Date.now()}_${drawingFile?.name}`;
       const drawingUrl = await uploadFile(drawingPath, drawingFile!);
       await addDrawing(projectId, drawingFile!.name, drawingUrl);
+
+      // 3. Upload and register optional 3D GLB Model
+      if (glbFile) {
+        setUploadStatus('Uploading 3D BIM Model (GLB)...');
+        const glbPath = `projects/${projectId}/models/${Date.now()}_${glbFile.name}`;
+        const glbUrl = await uploadFile(glbPath, glbFile);
+        await addModel(projectId, glbFile.name, glbUrl);
+      }
 
       setUploadStatus('Project created successfully!');
 
@@ -242,7 +282,13 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
             className="hidden"
             disabled={submitting}
           />
-          {drawingFile ? (
+          {convertingPdf ? (
+            <div className="w-full h-24 flex flex-col items-center justify-center border border-dashed border-blue-300 dark:border-blue-800 rounded bg-blue-50/10 dark:bg-blue-950/10 text-blue-600 dark:text-blue-400 animate-pulse">
+              <Loader2 className="h-6 w-6 mb-1 animate-spin" />
+              <span className="text-xs font-semibold">Converting PDF to Blueprint Image...</span>
+              <span className="text-[9px] text-slate-400">Generating sharp vector page</span>
+            </div>
+          ) : drawingFile ? (
             <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2 rounded border border-emerald-200 dark:border-emerald-900/30">
               <div className="flex items-center gap-2 truncate">
                 <FileText className="h-4 w-4 text-emerald-600 shrink-0" />
@@ -268,7 +314,7 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
             >
               <UploadCloud className="h-6 w-6 mb-1 text-slate-400" />
               <span className="text-xs font-semibold text-slate-600">Select Site Drawing</span>
-              <span className="text-[9px] text-slate-400">Max size 50MB</span>
+              <span className="text-[9px] text-slate-400">PNG, JPG, PDF up to 50MB</span>
             </button>
           )}
         </div>
@@ -312,6 +358,49 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ userId, onSuccess, onC
               <UploadCloud className="h-5 w-5 mb-1 text-slate-400" />
               <span className="text-xs font-semibold text-slate-600">Select KML Map File</span>
               <span className="text-[9px] text-slate-400">Max size 10MB</span>
+            </button>
+          )}
+        </div>
+
+        <div className="p-4 border border-slate-200 dark:border-slate-800 rounded bg-slate-50 dark:bg-slate-950/40 relative">
+          <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase mb-2">
+            3D BIM Model (GLB) - Optional
+          </label>
+          <input
+            ref={glbInputRef}
+            type="file"
+            accept=".glb"
+            onChange={handleGlbChange}
+            className="hidden"
+            disabled={submitting}
+          />
+          {glbFile ? (
+            <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2 rounded border border-emerald-200 dark:border-emerald-900/30">
+              <div className="flex items-center gap-2 truncate">
+                <Box className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span className="text-[11px] text-slate-700 dark:text-slate-300 truncate font-medium">
+                  {glbFile.name}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGlbFile(null)}
+                disabled={submitting}
+                className="text-slate-400 hover:text-red-500 text-xs font-semibold px-1 py-0.5 cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => glbInputRef.current?.click()}
+              disabled={submitting}
+              className="w-full h-20 flex flex-col items-center justify-center border border-dashed border-slate-300 dark:border-slate-800 rounded hover:border-blue-400 hover:bg-white dark:hover:bg-slate-900 hover:text-blue-500 text-slate-400 transition cursor-pointer"
+            >
+              <UploadCloud className="h-5 w-5 mb-1 text-slate-400" />
+              <span className="text-xs font-semibold text-slate-600">Select 3D BIM Model (.glb)</span>
+              <span className="text-[9px] text-slate-400">Max size 50MB</span>
             </button>
           )}
         </div>

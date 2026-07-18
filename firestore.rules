@@ -70,7 +70,7 @@ service cloud.firestore {
     // 1. Projects Collection
     match /projects/{projectId} {
       allow get: if true; // Allow direct get for project sharing/viewing, list is restricted
-      allow list: if isSignedIn() && (resource.data.createdBy == request.auth.uid || isProjectMember(projectId, request.auth.uid));
+      allow list: if isSignedIn() && resource.data.createdBy == request.auth.uid;
       
       function isValidProject(data) {
         return data.projectName is string && data.projectName.size() >= 1 && data.projectName.size() <= 255 &&
