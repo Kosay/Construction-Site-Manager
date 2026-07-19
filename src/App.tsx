@@ -23,6 +23,8 @@ import { ShareLinkGenerator } from './components/ShareLinkGenerator';
 import { ModelViewer } from './components/ModelViewer';
 import { MapViewer } from './components/MapViewer';
 import { AuthPage } from './components/AuthPage';
+import { MobileApp } from './components/mobile/MobileApp';
+import { useIsMobile } from './hooks/useIsMobile';
 import { signInAnonymously, updateProfile } from 'firebase/auth';
 import { auth } from './lib/firebase';
 import {
@@ -46,7 +48,17 @@ import {
 
 function MainAppContent() {
   const { user, loading: authLoading, logout } = useAuth();
-  
+  const isMobile = useIsMobile();
+
+  // Route mobile users to mobile-optimized UI (with fallback)
+  if (isMobile && user) {
+    try {
+      return <MobileApp onSignOut={logout} />;
+    } catch (err) {
+      console.error('Mobile app error, falling back to desktop UI:', err);
+    }
+  }
+
   // Routing / Path States
   const [shareToken, setShareToken] = useState<string | null>(null);
   const [isShareView, setIsShareView] = useState(false);
@@ -904,7 +916,49 @@ function MainAppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <MainAppContent />
+      <ErrorBoundary>
+        <MainAppContent />
+      </ErrorBoundary>
     </AuthProvider>
   );
+}
+
+// Simple Error Boundary
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('App Error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-slate-800 border border-slate-700 p-8 rounded-2xl text-center">
+            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-lg font-bold text-slate-100">Application Error</h2>
+            <p className="text-xs text-slate-400 mt-2 font-mono break-words">
+              {this.state.error?.message || 'Unknown error occurred'}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-6 w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold transition cursor-pointer"
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
 }

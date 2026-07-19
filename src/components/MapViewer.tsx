@@ -341,6 +341,27 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
             </div>
           )}
 
+          {/* Get Started Guide (when no points) */}
+          {!loading && points.length === 0 && canEdit && !addMode && (
+            <div className="absolute inset-0 z-[300] flex items-center justify-center bg-gradient-to-b from-transparent to-slate-900/20 dark:to-slate-950/40">
+              <div className="text-center px-4 py-8 max-w-sm">
+                <div className="mb-4">
+                  <MapPin className="h-16 w-16 text-blue-500 mx-auto opacity-80" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">No Points Yet</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                  Start adding observation points to your site map. Use GPS or click anywhere on the map.
+                </p>
+                <button
+                  onClick={() => setAddMode(true)}
+                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-all active:scale-95"
+                >
+                  Get Started
+                </button>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[500] max-w-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/40 text-amber-700 dark:text-amber-300 px-3 py-2 rounded-lg text-[11px] flex items-start gap-2 shadow-lg">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
