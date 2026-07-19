@@ -913,16 +913,6 @@ function MainAppContent() {
   );
 }
 
-export default function App() {
-  return (
-    <AuthProvider>
-      <ErrorBoundary>
-        <MainAppContent />
-      </ErrorBoundary>
-    </AuthProvider>
-  );
-}
-
 // Simple Error Boundary
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
   constructor(props: { children: React.ReactNode }) {
@@ -945,7 +935,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
           <div className="w-full max-w-md bg-slate-800 border border-slate-700 p-8 rounded-2xl text-center">
             <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
             <h2 className="text-lg font-bold text-slate-100">Application Error</h2>
-            <p className="text-xs text-slate-400 mt-2 font-mono break-words">
+            <p className="text-xs text-slate-400 mt-2 font-mono break-words max-h-40 overflow-y-auto">
               {this.state.error?.message || 'Unknown error occurred'}
             </p>
             <button
@@ -961,4 +951,14 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 
     return this.props.children;
   }
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AuthProvider>
+        <MainAppContent />
+      </AuthProvider>
+    </ErrorBoundary>
+  );
 }
