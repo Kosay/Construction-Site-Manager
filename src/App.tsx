@@ -48,16 +48,6 @@ import {
 
 function MainAppContent() {
   const { user, loading: authLoading, logout } = useAuth();
-  const isMobile = useIsMobile();
-
-  // Route mobile users to mobile-optimized UI (with fallback)
-  if (isMobile && user) {
-    try {
-      return <MobileApp onSignOut={logout} />;
-    } catch (err) {
-      console.error('Mobile app error, falling back to desktop UI:', err);
-    }
-  }
 
   // Routing / Path States
   const [shareToken, setShareToken] = useState<string | null>(null);
@@ -953,11 +943,24 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
+// Decides between mobile and desktop UI. Both hooks always run before any
+// return, so no hooks are ever skipped (avoids React error #300).
+function AppRouter() {
+  const { user, logout } = useAuth();
+  const isMobile = useIsMobile();
+
+  if (isMobile && user) {
+    return <MobileApp onSignOut={logout} />;
+  }
+
+  return <MainAppContent />;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <MainAppContent />
+        <AppRouter />
       </AuthProvider>
     </ErrorBoundary>
   );

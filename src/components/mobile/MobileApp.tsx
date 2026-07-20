@@ -1,20 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { Drawing, Mark } from '../../types';
 import { getDrawings, getMarks } from '../../lib/firestore';
+import { useAuth } from '../../lib/authContext';
 import { MobileProjectsList } from './MobileProjectsList';
 import { MobileDrawingViewer } from './MobileDrawingViewer';
 import { MobilePhotoCapture } from './MobilePhotoCapture';
 import { MobileGPSScreen } from './MobileGPSScreen';
 import { MobileMarksList } from './MobileMarksList';
+import { MobileSettings } from './MobileSettings';
 import { MobileBottomNav } from './MobileBottomNav';
+import { ProjectForm } from '../ProjectForm';
+import { ChevronLeft } from 'lucide-react';
 
-type Screen = 'projects' | 'drawing' | 'marks' | 'photo' | 'gps';
+type Screen = 'projects' | 'drawing' | 'marks' | 'photo' | 'gps' | 'settings' | 'new-project';
 
 interface MobileAppProps {
   onSignOut: () => void;
 }
 
 export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
+  const { user } = useAuth();
   const [isTablet, setIsTablet] = useState(window.innerWidth >= 768);
   const [activeTab, setActiveTab] = useState<'projects' | 'drawing' | 'marks' | 'settings'>(
     'projects'
@@ -26,6 +31,8 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [marks, setMarks] = useState<Mark[]>([]);
   const [loading, setLoading] = useState(false);
+  // Bumped to force MobileProjectsList to remount and refetch after changes
+  const [projectsKey, setProjectsKey] = useState(0);
 
   useEffect(() => {
     const handleResize = () => {
@@ -109,16 +116,51 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
         setCurrentScreen('marks');
         break;
       case 'settings':
-        onSignOut();
+        setCurrentScreen('settings');
         break;
     }
+  };
+
+  const handleNewProjectSuccess = (projectId: string) => {
+    // Refresh the projects list, then open the newly created project
+    setProjectsKey((k) => k + 1);
+    handleProjectSelect(projectId);
   };
 
   return (
     <div className="fixed inset-0 bg-white dark:bg-slate-900 flex flex-col overflow-hidden">
       {/* Screens */}
       {currentScreen === 'projects' && (
-        <MobileProjectsList onSelectProject={handleProjectSelect} />
+        <MobileProjectsList
+          key={projectsKey}
+          onSelectProject={handleProjectSelect}
+          onNewProject={() => setCurrentScreen('new-project')}
+        />
+      )}
+
+      {currentScreen === 'new-project' && user && (
+        <div className="flex flex-col h-full bg-white dark:bg-slate-900">
+          <div className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-3 flex items-center gap-2">
+            <button
+              onClick={() => setCurrentScreen('projects')}
+              className="flex items-center gap-1 text-blue-600 dark:text-blue-400"
+            >
+              <ChevronLeft className="h-5 w-5" /> Back
+            </button>
+            <h2 className="font-semibold text-slate-900 dark:text-slate-100">New Project</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 pb-24">
+            <ProjectForm
+              userId={user.uid}
+              onSuccess={handleNewProjectSuccess}
+              onCancel={() => setCurrentScreen('projects')}
+            />
+          </div>
+        </div>
+      )}
+
+      {currentScreen === 'settings' && (
+        <MobileSettings onSignOut={onSignOut} />
       )}
 
       {currentScreen === 'drawing' && selectedDrawing && selectedProjectId && (
