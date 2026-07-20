@@ -20,8 +20,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
-        cache: 'npm'
+        node-version: '20'
 
     - name: Setup Java
       uses: actions/setup-java@v4
@@ -32,11 +31,14 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
-    - name: Clear npm cache
-      run: npm cache clean --force
-
+    # Fresh install so npm resolves the platform-specific @tailwindcss/oxide
+    # native binding for linux-x64. Works around npm optional-deps bug
+    # (https://github.com/npm/cli/issues/4828) that caused
+    # "Cannot find native binding" during vite build.
     - name: Install dependencies
-      run: npm install --legacy-peer-deps
+      run: |
+        rm -rf node_modules package-lock.json
+        npm install
 
     - name: Build React app
       run: npm run build
@@ -62,9 +64,7 @@ jobs:
       if: success()
       with:
         name: construction-site-manager-apk
-        path: |
-          android/app/build/outputs/apk/release/app-release.apk
-          android/app/build/outputs/apk/debug/app-debug.apk
+        path: android/app/build/outputs/apk/debug/app-debug.apk
         retention-days: 30
 
     - name: Create Release (on version tag)
@@ -74,24 +74,3 @@ jobs:
         files: android/app/build/outputs/apk/debug/app-debug.apk
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Slack Notification (on failure)
-      if: failure()
-      uses: slackapi/slack-github-action@v1
-      with:
-        payload: |
-          {
-            "text": "❌ Construction Site Manager APK build failed",
-            "blocks": [
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "*APK Build Failed*\nBranch: ${{ github.ref }}\nCommit: ${{ github.sha }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
-                }
-              }
-            ]
-          }
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
