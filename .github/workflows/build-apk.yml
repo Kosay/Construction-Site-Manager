@@ -11,7 +11,9 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
+      contents: write
+      pull-requests: write
+      issues: write
 
     steps:
     - name: Checkout code
@@ -67,10 +69,59 @@ jobs:
         path: android/app/build/outputs/apk/debug/app-debug.apk
         retention-days: 30
 
-    - name: Create Release (on version tag)
-      if: startsWith(github.ref, 'refs/tags/v')
-      uses: softprops/action-gh-release@v1
+    # Publish the APK to a rolling "latest-apk" release so it has a permanent,
+    # directly-downloadable URL (artifact links require login; release assets do not).
+    - name: Publish APK to latest release
+      if: success()
+      uses: softprops/action-gh-release@v2
       with:
+        tag_name: latest-apk
+        name: Latest APK
+        prerelease: true
         files: android/app/build/outputs/apk/debug/app-debug.apk
+        body: |
+          Latest automated debug APK build.
+          Build #${{ github.run_number }} — commit ${{ github.sha }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # Post the direct download link as a comment on the PR (or the commit).
+    - name: Comment APK download link
+      if: success()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { owner, repo } = context.repo;
+          const url = `https://github.com/${owner}/${repo}/releases/download/latest-apk/app-debug.apk`;
+          const runUrl = `${process.env.GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${context.runId}`;
+          const body = [
+            '✅ **APK build succeeded**',
+            '',
+            `📱 **[Download app-debug.apk](${url})** — tap on your Android phone to install.`,
+            '',
+            `Build #${{ github.run_number }} · commit \`${context.sha.substring(0, 7)}\` · [workflow run](${runUrl})`,
+            '',
+            '_If prompted, allow "Install unknown apps" for your browser to finish installing._'
+          ].join('\n');
+
+          if (context.eventName === 'pull_request') {
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: context.issue.number, body,
+            });
+          } else {
+            const branch = context.ref.replace('refs/heads/', '');
+            const prs = await github.rest.pulls.list({
+              owner, repo, state: 'open', head: `${owner}:${branch}`,
+            });
+            if (prs.data.length > 0) {
+              for (const pr of prs.data) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: pr.number, body,
+                });
+              }
+            } else {
+              await github.rest.repos.createCommitComment({
+                owner, repo, commit_sha: context.sha, body,
+              });
+            }
+          }
