@@ -2,22 +2,41 @@ import React, { useEffect, useState } from 'react';
 import { Project } from '../../types';
 import { getProjects } from '../../lib/firestore';
 import { useAuth } from '../../lib/authContext';
-import { Loader2, AlertCircle, Folder, Plus } from 'lucide-react';
+import { Loader2, AlertCircle, Folder, Plus, KeyRound, ArrowRight } from 'lucide-react';
 
 interface MobileProjectsListProps {
   onSelectProject: (projectId: string) => void;
   onNewProject: () => void;
+  onJoinWithCode: (code: string) => Promise<string | null>;
 }
 
 export const MobileProjectsList: React.FC<MobileProjectsListProps> = ({
   onSelectProject,
   onNewProject,
+  onJoinWithCode,
 }) => {
   const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isTablet, setIsTablet] = useState(window.innerWidth >= 768);
+
+  // Join-with-code state
+  const [joinOpen, setJoinOpen] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+
+  const handleJoin = async () => {
+    setJoining(true);
+    setJoinError(null);
+    const err = await onJoinWithCode(joinCode);
+    if (err) {
+      setJoinError(err);
+      setJoining(false);
+    }
+    // On success the parent navigates away; no need to reset state here.
+  };
 
   useEffect(() => {
     const handleResize = () => {
@@ -48,14 +67,65 @@ export const MobileProjectsList: React.FC<MobileProjectsListProps> = ({
   return (
     <div className="flex flex-col h-full bg-white dark:bg-slate-900">
       {/* Header with New Project button */}
-      <div className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Projects</h2>
-        <button
-          onClick={onNewProject}
-          className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg active:scale-95 transition"
-        >
-          <Plus className="h-4 w-4" /> New
-        </button>
+      <div className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Projects</h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setJoinOpen((v) => !v);
+                setJoinError(null);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-lg active:scale-95 transition"
+              title="Join a shared project with a code"
+            >
+              <KeyRound className="h-4 w-4" /> Join
+            </button>
+            <button
+              onClick={onNewProject}
+              className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg active:scale-95 transition"
+            >
+              <Plus className="h-4 w-4" /> New
+            </button>
+          </div>
+        </div>
+
+        {/* Join with code box */}
+        {joinOpen && (
+          <div className="mt-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-3 space-y-2">
+            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Join with a code
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && joinCode.trim() && !joining) handleJoin();
+                }}
+                placeholder="Paste the shared code"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                className="flex-1 px-3 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 dark:text-slate-100 font-mono"
+              />
+              <button
+                onClick={handleJoin}
+                disabled={joining || !joinCode.trim()}
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold rounded-lg flex items-center gap-1.5 active:scale-95 transition"
+              >
+                {joining ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+              </button>
+            </div>
+            {joinError && (
+              <p className="text-xs text-rose-600 dark:text-rose-400">{joinError}</p>
+            )}
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Ask the project owner to send you a code from the Share screen.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Body */}

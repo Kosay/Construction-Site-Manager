@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Drawing, Mark } from '../../types';
-import { getDrawings, getMarks } from '../../lib/firestore';
+import { getDrawings, getMarks, validateShareLink } from '../../lib/firestore';
 import { useAuth } from '../../lib/authContext';
 import { MobileProjectsList } from './MobileProjectsList';
 import { MobileDrawingViewer } from './MobileDrawingViewer';
@@ -33,6 +33,9 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
   const [loading, setLoading] = useState(false);
   // Bumped to force MobileProjectsList to remount and refetch after changes
   const [projectsKey, setProjectsKey] = useState(0);
+  // Shared-session state: set when the user opened a project via a share code
+  const [sharedToken, setSharedToken] = useState<string | null>(null);
+  const [sharedCanEdit, setSharedCanEdit] = useState(false);
 
   useEffect(() => {
     const handleResize = () => {
@@ -43,6 +46,9 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
   }, []);
 
   const handleProjectSelect = async (projectId: string) => {
+    // Selecting one of your own projects clears any shared-session context
+    setSharedToken(null);
+    setSharedCanEdit(false);
     setSelectedProjectId(projectId);
     setLoading(true);
 
@@ -65,6 +71,39 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
       console.error('Failed to load project drawings:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Open a project shared via a code. Returns an error message, or null on success.
+  const handleJoinWithCode = async (code: string): Promise<string | null> => {
+    const trimmed = code.trim();
+    if (!trimmed) return 'Please enter a code.';
+
+    try {
+      const link = await validateShareLink(trimmed);
+      if (!link) return 'This code is invalid, expired, or revoked.';
+
+      const drawingsData = await getDrawings(link.projectId);
+      if (drawingsData.length === 0) {
+        return 'This shared project has no drawings to view yet.';
+      }
+
+      const firstDrawing = drawingsData[0];
+      const marksData = await getMarks(link.projectId, firstDrawing.id);
+
+      setSharedToken(trimmed);
+      setSharedCanEdit(link.accessLevel === 'edit');
+      setSelectedProjectId(link.projectId);
+      setDrawings(drawingsData);
+      setSelectedDrawing(firstDrawing);
+      setSelectedDrawingId(firstDrawing.id);
+      setMarks(marksData);
+      setCurrentScreen('drawing');
+      setActiveTab('drawing');
+      return null;
+    } catch (err) {
+      console.error('Join with code failed:', err);
+      return 'Could not open the shared project. Check your connection and try again.';
     }
   };
 
@@ -105,6 +144,9 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
 
     switch (tab) {
       case 'projects':
+        // Leaving a shared session when going back to your own projects
+        setSharedToken(null);
+        setSharedCanEdit(false);
         setCurrentScreen('projects');
         break;
       case 'drawing':
@@ -135,6 +177,7 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
           key={projectsKey}
           onSelectProject={handleProjectSelect}
           onNewProject={() => setCurrentScreen('new-project')}
+          onJoinWithCode={handleJoinWithCode}
         />
       )}
 
@@ -175,6 +218,8 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
             // TODO: Open mark creation modal
           }}
           onShowMarksList={() => setCurrentScreen('marks')}
+          canEdit={sharedToken ? sharedCanEdit : true}
+          shareToken={sharedToken || undefined}
         />
       )}
 
