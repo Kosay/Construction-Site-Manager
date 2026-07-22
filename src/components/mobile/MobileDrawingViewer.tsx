@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Circle, Square, Minus, Camera, MapPin, ChevronLeft, Loader2, Check } from 'lucide-react';
+import { Circle, Square, Minus, Camera, MapPin, ChevronLeft, Loader2, Check, Share2 } from 'lucide-react';
 import { Camera as CapCamera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Drawing, Mark, Project } from '../../types';
 import { getMarks, getProject } from '../../lib/firestore';
 import { useAuth } from '../../lib/authContext';
 import { saveGeoPhoto } from '../../lib/geoPhoto';
+import { MobileShareProject } from './MobileShareProject';
 
 interface MobileDrawingViewerProps {
   projectId: string;
@@ -41,6 +42,7 @@ export const MobileDrawingViewer: React.FC<MobileDrawingViewerProps> = ({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [toast, setToast] = useState<string | null>(null);
+  const [showShare, setShowShare] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -160,13 +162,33 @@ export const MobileDrawingViewer: React.FC<MobileDrawingViewerProps> = ({
             <div className="text-sm font-semibold text-white">{drawing.fileName}</div>
           </div>
         </button>
-        <button
-          onClick={onShowMarksList}
-          className="text-xs font-semibold px-3 py-1.5 bg-slate-800 text-slate-300 rounded"
-        >
-          {marks.length} marks
-        </button>
+        <div className="flex items-center gap-2">
+          {!shareToken && (
+            <button
+              onClick={() => setShowShare(true)}
+              className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 bg-slate-800 text-slate-300 rounded hover:bg-slate-700"
+              title="Share project"
+            >
+              <Share2 className="h-3.5 w-3.5" /> Share
+            </button>
+          )}
+          <button
+            onClick={onShowMarksList}
+            className="text-xs font-semibold px-3 py-1.5 bg-slate-800 text-slate-300 rounded"
+          >
+            {marks.length} marks
+          </button>
+        </div>
       </div>
+
+      {showShare && (
+        <MobileShareProject
+          projectId={projectId}
+          adminUid={user?.uid || ''}
+          projectName={project?.projectName}
+          onClose={() => setShowShare(false)}
+        />
+      )}
 
       {/* Drawing Canvas */}
       <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-slate-800 to-black relative overflow-hidden">
