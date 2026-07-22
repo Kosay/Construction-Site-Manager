@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Circle, Square, Minus, Camera, MapPin, ChevronLeft, Loader2 } from 'lucide-react';
+import { Circle, Square, Minus, Camera, MapPin, ChevronLeft, Loader2, Check } from 'lucide-react';
+import { Camera as CapCamera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Drawing, Mark, Project } from '../../types';
 import { getMarks, getProject } from '../../lib/firestore';
+import { useAuth } from '../../lib/authContext';
+import { saveGeoPhoto } from '../../lib/geoPhoto';
 
 interface MobileDrawingViewerProps {
   projectId: string;
@@ -12,6 +15,8 @@ interface MobileDrawingViewerProps {
   onGPSCapture: () => void;
   onCreateMark: (type: 'circle' | 'rectangle' | 'line') => void;
   onShowMarksList: () => void;
+  canEdit?: boolean;
+  shareToken?: string;
 }
 
 type ToolType = 'select' | 'circle' | 'rectangle' | 'line';
@@ -25,11 +30,17 @@ export const MobileDrawingViewer: React.FC<MobileDrawingViewerProps> = ({
   onGPSCapture,
   onCreateMark,
   onShowMarksList,
+  canEdit = true,
+  shareToken,
 }) => {
+  const { user } = useAuth();
   const [activeTool, setActiveTool] = useState<ToolType>('select');
   const [marks, setMarks] = useState<Mark[]>([]);
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<Project | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -56,6 +67,82 @@ export const MobileDrawingViewer: React.FC<MobileDrawingViewerProps> = ({
       onCreateMark(tool);
     } else {
       setActiveTool(tool);
+    }
+  };
+
+  // Camera button: open native camera, capture photo + GPS, save to the project.
+  const handleGeoPhoto = async () => {
+    let image;
+    try {
+      image = await CapCamera.getPhoto({
+        quality: 80,
+        allowEditing: false,
+        resultType: CameraResultType.Uri,
+        source: CameraSource.Camera,
+      });
+    } catch (err: any) {
+      // User cancelled the camera — do nothing.
+      if (!/cancel/i.test(err?.message || '')) {
+        setToast('Could not open the camera.');
+        setTimeout(() => setToast(null), 4000);
+      }
+      return;
+    }
+
+    if (!image?.webPath) return;
+
+    setBusy(true);
+    try {
+      setStatus('Getting location…');
+      const [position, blob] = await Promise.all([
+        new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          })
+        ),
+        fetch(image.webPath).then((r) => r.blob()),
+      ]);
+
+      setStatus('Saving photo…');
+      const file = new File([blob], `photo_${Date.now()}.jpg`, {
+        type: blob.type || 'image/jpeg',
+      });
+
+      const result = await saveGeoPhoto({
+        projectId,
+        project,
+        drawingId,
+        photo: file,
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+        createdBy: user?.uid || 'guest',
+        createdByName:
+          localStorage.getItem('custom_display_name') || user?.displayName || undefined,
+        shareToken,
+      });
+
+      setMarks(await getMarks(projectId, drawingId));
+      setToast(
+        result.savedAs === 'mark'
+          ? 'Photo added to the drawing at your location.'
+          : 'No calibration match — photo saved to the site map.'
+      );
+    } catch (err: any) {
+      console.error('Geo-photo failed:', err);
+      const isGpsError =
+        err?.code === 1 || err?.code === 2 || err?.code === 3 || /location/i.test(err?.message || '');
+      setToast(
+        isGpsError
+          ? 'Could not get GPS location. Enable location and try again.'
+          : (err?.message || 'Failed to save photo. Please try again.')
+      );
+    } finally {
+      setBusy(false);
+      setStatus('');
+      setTimeout(() => setToast(null), 4000);
     }
   };
 
@@ -97,58 +184,77 @@ export const MobileDrawingViewer: React.FC<MobileDrawingViewerProps> = ({
         )}
 
         {/* Floating Toolbar */}
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/40 backdrop-blur-md rounded-lg p-2 flex gap-2 border border-white/10">
-          <button
-            onClick={() => handleToolClick('circle')}
-            className={`p-3 rounded transition-all ${
-              activeTool === 'circle'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white/10 text-white hover:bg-white/20'
-            }`}
-            title="Circle"
-          >
-            <Circle className="h-5 w-5" />
-          </button>
-          <button
-            onClick={() => handleToolClick('rectangle')}
-            className={`p-3 rounded transition-all ${
-              activeTool === 'rectangle'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white/10 text-white hover:bg-white/20'
-            }`}
-            title="Rectangle"
-          >
-            <Square className="h-5 w-5" />
-          </button>
-          <button
-            onClick={() => handleToolClick('line')}
-            className={`p-3 rounded transition-all ${
-              activeTool === 'line'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white/10 text-white hover:bg-white/20'
-            }`}
-            title="Line"
-          >
-            <Minus className="h-5 w-5" />
-          </button>
+        {canEdit && (
+          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/40 backdrop-blur-md rounded-lg p-2 flex gap-2 border border-white/10">
+            <button
+              onClick={() => handleToolClick('circle')}
+              className={`p-3 rounded transition-all ${
+                activeTool === 'circle'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white/10 text-white hover:bg-white/20'
+              }`}
+              title="Circle"
+            >
+              <Circle className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => handleToolClick('rectangle')}
+              className={`p-3 rounded transition-all ${
+                activeTool === 'rectangle'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white/10 text-white hover:bg-white/20'
+              }`}
+              title="Rectangle"
+            >
+              <Square className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => handleToolClick('line')}
+              className={`p-3 rounded transition-all ${
+                activeTool === 'line'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white/10 text-white hover:bg-white/20'
+              }`}
+              title="Line"
+            >
+              <Minus className="h-5 w-5" />
+            </button>
 
-          <div className="w-px bg-white/10"></div>
+            <div className="w-px bg-white/10"></div>
 
-          <button
-            onClick={onPhotoCapture}
-            className="p-3 rounded bg-white/10 text-white hover:bg-white/20 transition-all"
-            title="Take Photo"
-          >
-            <Camera className="h-5 w-5" />
-          </button>
-          <button
-            onClick={onGPSCapture}
-            className="p-3 rounded bg-white/10 text-white hover:bg-white/20 transition-all"
-            title="Get Location"
-          >
-            <MapPin className="h-5 w-5" />
-          </button>
-        </div>
+            <button
+              onClick={handleGeoPhoto}
+              disabled={busy}
+              className="p-3 rounded bg-white/10 text-white hover:bg-white/20 disabled:opacity-50 transition-all"
+              title="Take geo-tagged photo"
+            >
+              <Camera className="h-5 w-5" />
+            </button>
+            <button
+              onClick={onGPSCapture}
+              className="p-3 rounded bg-white/10 text-white hover:bg-white/20 transition-all"
+              title="Get Location"
+            >
+              <MapPin className="h-5 w-5" />
+            </button>
+          </div>
+        )}
+
+        {/* Busy overlay while capturing/saving a geo-photo */}
+        {busy && (
+          <div className="absolute inset-0 z-20 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
+            <Loader2 className="h-8 w-8 text-blue-400 animate-spin" />
+            <span className="text-sm font-semibold text-white">{status || 'Working…'}</span>
+          </div>
+        )}
+
+        {/* Toast */}
+        {toast && (
+          <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-30 max-w-[85%] bg-slate-900/95 border border-white/10 text-white text-xs font-medium px-4 py-2.5 rounded-lg shadow-lg flex items-center gap-2">
+            <Check className="h-4 w-4 text-emerald-400 shrink-0" />
+            <span>{toast}</span>
+          </div>
+        )}
       </div>
     </div>
   );
