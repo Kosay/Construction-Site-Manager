@@ -80,7 +80,7 @@ export const MobileDrawingViewer: React.FC<MobileDrawingViewerProps> = ({
         quality: 80,
         allowEditing: false,
         resultType: CameraResultType.Uri,
-        source: CameraSource.Camera,
+        source: CameraSource.Prompt,
       });
     } catch (err: any) {
       // User cancelled the camera — do nothing.

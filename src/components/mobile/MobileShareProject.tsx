@@ -91,6 +91,14 @@ export const MobileShareProject: React.FC<MobileShareProjectProps> = ({
     }
   };
 
+  const handleWhatsApp = (link: ShareLink) => {
+    const access = link.accessLevel === 'edit' ? 'view & edit' : 'view-only';
+    const text =
+      `You're invited to ${projectName || 'a project'} on Construction Site Manager.\n\n` +
+      `Open the app, tap "Join with code", and enter this ${access} code:\n\n${link.token}`;
+    window.location.href = `whatsapp://send?text=${encodeURIComponent(text)}`;
+  };
+
   const handleRevoke = async (token: string) => {
     if (!window.confirm('Revoke this code? Anyone using it will lose access immediately.')) return;
     try {
@@ -239,6 +247,12 @@ export const MobileShareProject: React.FC<MobileShareProjectProps> = ({
                     className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg active:scale-95 transition"
                   >
                     <Share2 className="h-4 w-4" /> Share
+                  </button>
+                  <button
+                    onClick={() => handleWhatsApp(link)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg active:scale-95 transition"
+                  >
+                    WhatsApp
                   </button>
                 </div>
               </div>

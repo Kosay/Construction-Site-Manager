@@ -949,7 +949,7 @@ function AppRouter() {
   const { user, logout } = useAuth();
   const isMobile = useIsMobile();
 
-  if (isMobile && user) {
+  if (isMobile) {
     return <MobileApp onSignOut={logout} />;
   }
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Drawing, Mark } from '../../types';
-import { getDrawings, getMarks, validateShareLink } from '../../lib/firestore';
+import { getDrawings, getMarks, validateShareLink, getProject } from '../../lib/firestore';
 import { useAuth } from '../../lib/authContext';
 import { MobileProjectsList } from './MobileProjectsList';
 import { MobileDrawingViewer } from './MobileDrawingViewer';
@@ -90,6 +90,28 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
 
       const firstDrawing = drawingsData[0];
       const marksData = await getMarks(link.projectId, firstDrawing.id);
+
+      // Fetch project to get its name
+      const project = await getProject(link.projectId);
+      if (project) {
+        try {
+          const savedStr = localStorage.getItem('csm_saved_projects');
+          let saved: {token: string, projectId: string, projectName: string}[] = [];
+          if (savedStr) saved = JSON.parse(savedStr);
+          
+          // Remove if it exists
+          saved = saved.filter(s => s.token !== trimmed);
+          // Add to front
+          saved.unshift({
+            token: trimmed,
+            projectId: link.projectId,
+            projectName: project.projectName
+          });
+          localStorage.setItem('csm_saved_projects', JSON.stringify(saved));
+        } catch (e) {
+          console.error("Failed to save project to localStorage", e);
+        }
+      }
 
       setSharedToken(trimmed);
       setSharedCanEdit(link.accessLevel === 'edit');

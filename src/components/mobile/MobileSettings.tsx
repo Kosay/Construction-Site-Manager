@@ -113,12 +113,14 @@ export const MobileSettings: React.FC<MobileSettingsProps> = ({ onSignOut }) => 
         </div>
 
         {/* Sign out */}
-        <button
-          onClick={onSignOut}
-          className="w-full py-3.5 px-4 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 font-semibold rounded-lg flex items-center justify-center gap-2 border border-red-200 dark:border-red-900/40 active:scale-95 transition"
-        >
-          <LogOut className="h-4 w-4" /> Sign Out
-        </button>
+        {user && (
+          <button
+            onClick={onSignOut}
+            className="w-full py-3.5 px-4 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 font-semibold rounded-lg flex items-center justify-center gap-2 border border-red-200 dark:border-red-900/40 active:scale-95 transition"
+          >
+            <LogOut className="h-4 w-4" /> Sign Out
+          </button>
+        )}
       </div>
     </div>
   );
