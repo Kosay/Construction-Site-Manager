@@ -47,6 +47,8 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
   const [selectedPoint, setSelectedPoint] = useState<MapPoint | null>(null);
   const [selectedMarker, setSelectedMarker] = useState<MapPoint | null>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
+  // Ensures we auto-center on the project only once (so we don't fight manual panning)
+  const fittedRef = useRef(false);
 
   // Pending new-point placement
   const [pendingLatLng, setPendingLatLng] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
@@ -67,10 +69,27 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
   // Initialize map and load points
   useEffect(() => {
     setLoading(true);
+    fittedRef.current = false; // re-center when the project changes
     loadPoints();
     setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  // Auto-center the map on the project's points once they (and the map) are ready.
+  // If there are no points, the KML layer's own default viewport handles centering.
+  useEffect(() => {
+    if (!map || fittedRef.current || points.length === 0) return;
+
+    if (points.length === 1) {
+      map.setCenter({ lat: points[0].lat, lng: points[0].lng });
+      map.setZoom(18);
+    } else {
+      const bounds = new google.maps.LatLngBounds();
+      points.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
+      map.fitBounds(bounds);
+    }
+    fittedRef.current = true;
+  }, [map, points]);
 
   // Request GPS when entering add mode
   useEffect(() => {
@@ -290,16 +309,23 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
         <div className="flex-1 relative min-h-[300px]">
           <GoogleMap
             mapContainerClassName="absolute inset-0"
-            center={{ lat: 25.2048, lng: 55.2708 }}
-            zoom={12}
+            defaultCenter={{ lat: 25.2048, lng: 55.2708 }}
+            defaultZoom={12}
             onLoad={setMap}
             options={{
               styles: mapStyles,
               fullscreenControl: false,
             }}
           >
-            {/* KML Layer */}
-            {kmlUrl && <KmlLayer url={kmlUrl} />}
+            {/* KML Layer. When there are no points, let the KML's own default
+                viewport center the map on the project; when points exist we
+                center on them (see effect above) so keep the KML viewport. */}
+            {kmlUrl && (
+              <KmlLayer
+                url={kmlUrl}
+                options={{ preserveViewport: points.length > 0 }}
+              />
+            )}
 
             {/* Markers */}
             {points.map((point) => {
