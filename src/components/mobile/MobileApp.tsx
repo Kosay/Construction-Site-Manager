@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Drawing, Mark } from '../../types';
-import { getDrawings, getMarks, validateShareLink } from '../../lib/firestore';
+import { getDrawings, getMarks, validateShareLink, getProject } from '../../lib/firestore';
 import { useAuth } from '../../lib/authContext';
+import {
+  listJoinedProjects,
+  saveJoinedProject,
+  removeJoinedProject,
+  JoinedProject,
+} from '../../lib/joinedProjects';
 import { MobileProjectsList } from './MobileProjectsList';
 import { MobileDrawingViewer } from './MobileDrawingViewer';
 import { MobilePhotoCapture } from './MobilePhotoCapture';
@@ -9,16 +15,16 @@ import { MobileGPSScreen } from './MobileGPSScreen';
 import { MobileMarksList } from './MobileMarksList';
 import { MobileSettings } from './MobileSettings';
 import { MobileBottomNav } from './MobileBottomNav';
-import { ProjectForm } from '../ProjectForm';
-import { ChevronLeft } from 'lucide-react';
 
-type Screen = 'projects' | 'drawing' | 'marks' | 'photo' | 'gps' | 'settings' | 'new-project';
+type Screen = 'projects' | 'drawing' | 'marks' | 'photo' | 'gps' | 'settings';
 
 interface MobileAppProps {
   onSignOut: () => void;
+  // When set (e.g. a guest opened the app with a code), auto-open that project.
+  initialShareCode?: string;
 }
 
-export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
+export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut, initialShareCode }) => {
   const { user } = useAuth();
   const [isTablet, setIsTablet] = useState(window.innerWidth >= 768);
   const [activeTab, setActiveTab] = useState<'projects' | 'drawing' | 'marks' | 'settings'>(
@@ -31,11 +37,11 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [marks, setMarks] = useState<Mark[]>([]);
   const [loading, setLoading] = useState(false);
-  // Bumped to force MobileProjectsList to remount and refetch after changes
-  const [projectsKey, setProjectsKey] = useState(0);
   // Shared-session state: set when the user opened a project via a share code
   const [sharedToken, setSharedToken] = useState<string | null>(null);
   const [sharedCanEdit, setSharedCanEdit] = useState(false);
+  // Projects remembered on this device after joining by code
+  const [joinedProjects, setJoinedProjects] = useState<JoinedProject[]>(() => listJoinedProjects());
 
   useEffect(() => {
     const handleResize = () => {
@@ -44,6 +50,14 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Auto-open a project when the app was launched with a share code (guest flow)
+  useEffect(() => {
+    if (initialShareCode) {
+      handleJoinWithCode(initialShareCode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialShareCode]);
 
   const handleProjectSelect = async (projectId: string) => {
     // Selecting one of your own projects clears any shared-session context
@@ -91,6 +105,22 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
       const firstDrawing = drawingsData[0];
       const marksData = await getMarks(link.projectId, firstDrawing.id);
 
+      // Remember this project on the device so the code isn't needed next time
+      let projectName = 'Shared project';
+      try {
+        const proj = await getProject(link.projectId);
+        if (proj?.projectName) projectName = proj.projectName;
+      } catch {
+        // non-fatal — keep the default name
+      }
+      saveJoinedProject({
+        code: trimmed,
+        projectId: link.projectId,
+        projectName,
+        accessLevel: link.accessLevel,
+      });
+      setJoinedProjects(listJoinedProjects());
+
       setSharedToken(trimmed);
       setSharedCanEdit(link.accessLevel === 'edit');
       setSelectedProjectId(link.projectId);
@@ -105,6 +135,11 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
       console.error('Join with code failed:', err);
       return 'Could not open the shared project. Check your connection and try again.';
     }
+  };
+
+  const handleRemoveJoined = (projectId: string) => {
+    removeJoinedProject(projectId);
+    setJoinedProjects(listJoinedProjects());
   };
 
   const handleDrawingChange = async (drawingId: string) => {
@@ -163,43 +198,17 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSignOut }) => {
     }
   };
 
-  const handleNewProjectSuccess = (projectId: string) => {
-    // Refresh the projects list, then open the newly created project
-    setProjectsKey((k) => k + 1);
-    handleProjectSelect(projectId);
-  };
-
   return (
     <div className="fixed inset-0 bg-white dark:bg-slate-900 flex flex-col overflow-hidden">
       {/* Screens */}
       {currentScreen === 'projects' && (
         <MobileProjectsList
-          key={projectsKey}
           onSelectProject={handleProjectSelect}
-          onNewProject={() => setCurrentScreen('new-project')}
           onJoinWithCode={handleJoinWithCode}
+          joinedProjects={joinedProjects}
+          onRemoveJoined={handleRemoveJoined}
+          showOwnProjects={!user?.isAnonymous}
         />
-      )}
-
-      {currentScreen === 'new-project' && user && (
-        <div className="flex flex-col h-full bg-white dark:bg-slate-900">
-          <div className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-3 flex items-center gap-2">
-            <button
-              onClick={() => setCurrentScreen('projects')}
-              className="flex items-center gap-1 text-blue-600 dark:text-blue-400"
-            >
-              <ChevronLeft className="h-5 w-5" /> Back
-            </button>
-            <h2 className="font-semibold text-slate-900 dark:text-slate-100">New Project</h2>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 pb-24">
-            <ProjectForm
-              userId={user.uid}
-              onSuccess={handleNewProjectSuccess}
-              onCancel={() => setCurrentScreen('projects')}
-            />
-          </div>
-        </div>
       )}
 
       {currentScreen === 'settings' && (

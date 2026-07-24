@@ -8,8 +8,9 @@ export interface GeoPhotoInput {
   project: Project | null;
   drawingId: string;
   photo: File;
-  lat: number;
-  lng: number;
+  // GPS is optional — a photo can still be uploaded without a location fix.
+  lat?: number;
+  lng?: number;
   accuracy?: number;
   createdBy: string;
   createdByName?: string;
@@ -41,30 +42,24 @@ export async function saveGeoPhoto(input: GeoPhotoInput): Promise<GeoPhotoResult
     uploadedAt: new Date().toISOString(),
   };
 
+  const hasGps = typeof input.lat === 'number' && typeof input.lng === 'number';
   const metadata = {
-    gpsLat: input.lat,
-    gpsLng: input.lng,
     timestamp: new Date().toISOString(),
     deviceInfo: 'mobile',
+    ...(hasGps ? { gpsLat: input.lat, gpsLng: input.lng } : {}),
     ...(input.accuracy !== undefined ? { gpsAccuracy: input.accuracy } : {}),
   };
 
   const label = input.label?.trim() || 'Photo observation';
   const category = input.category || 'general';
 
-  // 2. Try to place it on the drawing using the project's GPS calibration
-  const matrix = input.project?.calibrationPoints
-    ? calculateTransformMatrix(input.project.calibrationPoints)
-    : null;
-  const drawingCoords = matrix ? gpsToDrawingCoordinates(input.lat, input.lng, matrix) : null;
-
-  if (drawingCoords) {
-    const id = await addMark(
+  const createMarkAt = (x: number, y: number) =>
+    addMark(
       input.projectId,
       input.drawingId,
       {
         type: 'circle',
-        coordinates: { x: drawingCoords.x, y: drawingCoords.y, radius: 2 },
+        coordinates: { x, y, radius: 2 },
         label,
         category,
         createdBy: input.createdBy,
@@ -74,23 +69,42 @@ export async function saveGeoPhoto(input: GeoPhotoInput): Promise<GeoPhotoResult
       },
       input.shareToken
     );
+
+  // 2. If we have GPS and the project is calibrated, place the mark at the
+  //    matching spot on the drawing.
+  const matrix =
+    hasGps && input.project?.calibrationPoints
+      ? calculateTransformMatrix(input.project.calibrationPoints)
+      : null;
+  const drawingCoords = matrix ? gpsToDrawingCoordinates(input.lat!, input.lng!, matrix) : null;
+
+  if (drawingCoords) {
+    const id = await createMarkAt(drawingCoords.x, drawingCoords.y);
     return { savedAs: 'mark', id };
   }
 
-  // 3. Fallback: save as a geolocated site-map point
-  const id = await addMapPoint(
-    input.projectId,
-    {
-      lat: input.lat,
-      lng: input.lng,
-      label,
-      category,
-      createdBy: input.createdBy,
-      ...(input.createdByName ? { createdByName: input.createdByName } : {}),
-      metadata,
-      evidencePhotos: [photo],
-    },
-    input.shareToken
-  );
-  return { savedAs: 'mapPoint', id };
+  // 3. Owner with GPS but no calibration → geolocated site-map point.
+  //    (Guests can't write mapPoints under the current rules, so they skip this.)
+  if (hasGps && !input.shareToken) {
+    const id = await addMapPoint(
+      input.projectId,
+      {
+        lat: input.lat!,
+        lng: input.lng!,
+        label,
+        category,
+        createdBy: input.createdBy,
+        ...(input.createdByName ? { createdByName: input.createdByName } : {}),
+        metadata,
+        evidencePhotos: [photo],
+      },
+      input.shareToken
+    );
+    return { savedAs: 'mapPoint', id };
+  }
+
+  // 4. No calibration match (or no GPS): attach the photo as a mark at the
+  //    center of the drawing so it is always saved and rules-covered.
+  const id = await createMarkAt(50, 50);
+  return { savedAs: 'mark', id };
 }

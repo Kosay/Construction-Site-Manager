@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Share2, Copy, Check, Trash2, Loader2, Eye, Edit3, X, ShieldAlert,
 } from 'lucide-react';
+import { Share } from '@capacitor/share';
 import { createShareLink, getProjectShareLinks, revokeShareLink } from '../../lib/firestore';
 import { ShareLink } from '../../types';
 
@@ -80,15 +81,24 @@ export const MobileShareProject: React.FC<MobileShareProjectProps> = ({
     const text =
       `You're invited to ${projectName || 'a project'} on Construction Site Manager.\n\n` +
       `Open the app, tap "Join with code", and enter this ${access} code:\n\n${link.token}`;
+    // Prefer the native share sheet (WhatsApp/SMS/etc.) via Capacitor; fall back to
+    // the Web Share API, then to copying the code.
+    try {
+      await Share.share({ title: 'Construction Site Manager', text, dialogTitle: 'Share project code' });
+      return;
+    } catch (err: any) {
+      // A thrown "canceled"/"Share canceled" just means the user dismissed the sheet.
+      if (/cancel/i.test(err?.message || '')) return;
+    }
     try {
       if (navigator.share) {
         await navigator.share({ title: 'Construction Site Manager', text });
-      } else {
-        await handleCopy(link.token);
+        return;
       }
     } catch {
-      // user dismissed the share sheet; ignore
+      // ignore and fall through to copy
     }
+    await handleCopy(link.token);
   };
 
   const handleRevoke = async (token: string) => {

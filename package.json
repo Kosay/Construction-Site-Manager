@@ -18,6 +18,7 @@
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/geolocation": "^8.2.0",
     "@capacitor/preferences": "^8.0.1",
+    "@capacitor/share": "^8.0.1",
     "@google/genai": "^2.4.0",
     "@react-google-maps/api": "^2.19.0",
     "@react-three/drei": "^10.7.7",

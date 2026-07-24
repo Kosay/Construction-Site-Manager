@@ -24,6 +24,7 @@ import { ModelViewer } from './components/ModelViewer';
 import { MapViewer } from './components/MapViewer';
 import { AuthPage } from './components/AuthPage';
 import { MobileApp } from './components/mobile/MobileApp';
+import { MobileGuestEntry } from './components/mobile/MobileGuestEntry';
 import { useIsMobile } from './hooks/useIsMobile';
 import { signInAnonymously, updateProfile } from 'firebase/auth';
 import { auth } from './lib/firebase';
@@ -948,9 +949,16 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 function AppRouter() {
   const { user, logout } = useAuth();
   const isMobile = useIsMobile();
+  // Code a guest entered before anonymous sign-in; passed to MobileApp so it
+  // auto-opens the shared project once the anonymous user exists.
+  const [pendingShareCode, setPendingShareCode] = useState<string | undefined>(undefined);
 
-  if (isMobile && user) {
-    return <MobileApp onSignOut={logout} />;
+  if (isMobile) {
+    if (user) {
+      return <MobileApp onSignOut={logout} initialShareCode={pendingShareCode} />;
+    }
+    // Not signed in on mobile: offer guest-by-code (no account) or sign-in.
+    return <MobileGuestEntry onGuestCode={setPendingShareCode} />;
   }
 
   return <MainAppContent />;

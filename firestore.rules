@@ -148,6 +148,33 @@ service cloud.firestore {
         allow delete: if isSignedIn() && isProjectAdmin(projectId);
       }
 
+      // Subcollection: Map Points (geolocated site-map annotations / photos)
+      match /mapPoints/{pointId} {
+        allow get, list: if true;
+
+        function isValidMapPoint(data) {
+          return data.lat is number && data.lng is number &&
+                 data.label is string && data.label.size() <= 500 &&
+                 data.createdBy is string &&
+                 data.createdAt is timestamp &&
+                 data.evidencePhotos is list && data.evidencePhotos.size() <= 20;
+        }
+
+        // Create: signed-in editor, or a write carrying a valid 'edit' share token
+        allow create: if isValidMapPoint(incoming()) && (
+          (isSignedIn() && isProjectEditor(projectId) && (incoming().createdBy == request.auth.uid || incoming().createdBy == 'admin')) ||
+          (incoming().keys().hasAll(['shareToken']) && isValidEditShareLink(incoming().shareToken, projectId))
+        );
+
+        allow update: if isValidMapPoint(incoming()) && (
+          (isSignedIn() && isProjectEditor(projectId)) ||
+          (incoming().keys().hasAll(['shareToken']) && isValidEditShareLink(incoming().shareToken, projectId))
+        );
+
+        allow delete: if (isSignedIn() && isProjectEditor(projectId)) ||
+                        (resource.data.keys().hasAll(['shareToken']) && isValidEditShareLink(resource.data.shareToken, projectId));
+      }
+
       // Subcollection: Members
       match /members/{memberUid} {
         allow get: if isSignedIn() && (request.auth.uid == memberUid || isProjectViewer(projectId));
