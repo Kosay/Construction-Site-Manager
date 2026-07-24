@@ -80,7 +80,11 @@ export const MobileDrawingViewer: React.FC<MobileDrawingViewerProps> = ({
         quality: 80,
         allowEditing: false,
         resultType: CameraResultType.Uri,
+        // Prompt lets the user choose: take a new photo OR pick from the gallery.
         source: CameraSource.Prompt,
+        promptLabelHeader: 'Add Photo',
+        promptLabelPhoto: 'Choose from gallery',
+        promptLabelPicture: 'Take a photo',
       });
     } catch (err: any) {
       // User cancelled the camera — do nothing.
@@ -95,19 +99,30 @@ export const MobileDrawingViewer: React.FC<MobileDrawingViewerProps> = ({
 
     setBusy(true);
     try {
+      setStatus('Reading photo…');
+      const blob = await fetch(image.webPath).then((r) => r.blob());
+
+      // GPS is best-effort: don't block the upload if location is unavailable.
       setStatus('Getting location…');
-      const [position, blob] = await Promise.all([
-        new Promise<GeolocationPosition>((resolve, reject) =>
+      let coords: { lat: number; lng: number; accuracy?: number } | null = null;
+      try {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) =>
           navigator.geolocation.getCurrentPosition(resolve, reject, {
             enableHighAccuracy: true,
-            timeout: 10000,
+            timeout: 8000,
             maximumAge: 0,
           })
-        ),
-        fetch(image.webPath).then((r) => r.blob()),
-      ]);
+        );
+        coords = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        };
+      } catch {
+        coords = null; // proceed without location
+      }
 
-      setStatus('Saving photo…');
+      setStatus('Uploading photo…');
       const file = new File([blob], `photo_${Date.now()}.jpg`, {
         type: blob.type || 'image/jpeg',
       });
@@ -117,9 +132,9 @@ export const MobileDrawingViewer: React.FC<MobileDrawingViewerProps> = ({
         project,
         drawingId,
         photo: file,
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-        accuracy: position.coords.accuracy,
+        lat: coords?.lat,
+        lng: coords?.lng,
+        accuracy: coords?.accuracy,
         createdBy: user?.uid || 'guest',
         createdByName:
           localStorage.getItem('custom_display_name') || user?.displayName || undefined,
@@ -128,19 +143,15 @@ export const MobileDrawingViewer: React.FC<MobileDrawingViewerProps> = ({
 
       setMarks(await getMarks(projectId, drawingId));
       setToast(
-        result.savedAs === 'mark'
-          ? 'Photo added to the drawing at your location.'
-          : 'No calibration match — photo saved to the site map.'
+        result.savedAs === 'mapPoint'
+          ? 'Photo saved to the site map.'
+          : coords
+          ? 'Photo added to the drawing.'
+          : 'Photo uploaded (no GPS available).'
       );
     } catch (err: any) {
-      console.error('Geo-photo failed:', err);
-      const isGpsError =
-        err?.code === 1 || err?.code === 2 || err?.code === 3 || /location/i.test(err?.message || '');
-      setToast(
-        isGpsError
-          ? 'Could not get GPS location. Enable location and try again.'
-          : (err?.message || 'Failed to save photo. Please try again.')
-      );
+      console.error('Photo upload failed:', err);
+      setToast(err?.message || 'Failed to save photo. Please try again.');
     } finally {
       setBusy(false);
       setStatus('');
@@ -242,16 +253,6 @@ export const MobileDrawingViewer: React.FC<MobileDrawingViewerProps> = ({
               <Minus className="h-5 w-5" />
             </button>
 
-            <div className="w-px bg-white/10"></div>
-
-            <button
-              onClick={handleGeoPhoto}
-              disabled={busy}
-              className="p-3 rounded bg-white/10 text-white hover:bg-white/20 disabled:opacity-50 transition-all"
-              title="Take geo-tagged photo"
-            >
-              <Camera className="h-5 w-5" />
-            </button>
             <button
               onClick={onGPSCapture}
               className="p-3 rounded bg-white/10 text-white hover:bg-white/20 transition-all"
@@ -260,6 +261,18 @@ export const MobileDrawingViewer: React.FC<MobileDrawingViewerProps> = ({
               <MapPin className="h-5 w-5" />
             </button>
           </div>
+        )}
+
+        {/* Prominent Add Photo button (primary action) */}
+        {canEdit && (
+          <button
+            onClick={handleGeoPhoto}
+            disabled={busy}
+            className="absolute bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold rounded-full shadow-lg active:scale-95 transition-all"
+          >
+            <Camera className="h-5 w-5" />
+            Add Photo
+          </button>
         )}
 
         {/* Busy overlay while capturing/saving a geo-photo */}

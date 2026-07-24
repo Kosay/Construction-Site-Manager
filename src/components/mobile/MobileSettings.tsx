@@ -54,9 +54,11 @@ export const MobileSettings: React.FC<MobileSettingsProps> = ({ onSignOut }) => 
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 text-sm text-slate-700 dark:text-slate-200 truncate">
                   <Mail className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                  <span className="truncate">{user?.email || 'Guest user'}</span>
+                  <span className="truncate">{user?.email || 'Guest'}</span>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">Signed in</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {user?.isAnonymous ? 'Guest session (no account)' : 'Signed in'}
+                </p>
               </div>
             </div>
 
@@ -113,14 +115,12 @@ export const MobileSettings: React.FC<MobileSettingsProps> = ({ onSignOut }) => 
         </div>
 
         {/* Sign out */}
-        {user && (
-          <button
-            onClick={onSignOut}
-            className="w-full py-3.5 px-4 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 font-semibold rounded-lg flex items-center justify-center gap-2 border border-red-200 dark:border-red-900/40 active:scale-95 transition"
-          >
-            <LogOut className="h-4 w-4" /> Sign Out
-          </button>
-        )}
+        <button
+          onClick={onSignOut}
+          className="w-full py-3.5 px-4 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 font-semibold rounded-lg flex items-center justify-center gap-2 border border-red-200 dark:border-red-900/40 active:scale-95 transition"
+        >
+          <LogOut className="h-4 w-4" /> {user?.isAnonymous ? 'Exit guest session' : 'Sign Out'}
+        </button>
       </div>
     </div>
   );
