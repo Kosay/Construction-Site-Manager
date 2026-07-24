@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Project } from '../../types';
 import { getProjects } from '../../lib/firestore';
 import { useAuth } from '../../lib/authContext';
-import { Loader2, AlertCircle, Folder, Plus, KeyRound, ArrowRight } from 'lucide-react';
+import { Loader2, AlertCircle, Folder, Plus, KeyRound, ArrowRight, Trash2 } from 'lucide-react';
 
 interface MobileProjectsListProps {
   onSelectProject: (projectId: string) => void;

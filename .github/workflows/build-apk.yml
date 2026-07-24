@@ -57,7 +57,10 @@ jobs:
       run: npx cap sync
 
     - name: Build APK (debug)
-      run: cd android && ./gradlew assembleDebug
+      run: |
+        cd android
+        chmod +x gradlew
+        ./gradlew assembleDebug
       env:
         ANDROID_HOME: ${{ env.ANDROID_HOME }}
 
