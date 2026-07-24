@@ -309,8 +309,8 @@ export const MapViewer: React.FC<MapViewerProps> = ({ projectId, kmlUrl, kmlFile
         <div className="flex-1 relative min-h-[300px]">
           <GoogleMap
             mapContainerClassName="absolute inset-0"
-            defaultCenter={{ lat: 25.2048, lng: 55.2708 }}
-            defaultZoom={12}
+            center={{ lat: 25.2048, lng: 55.2708 }}
+            zoom={12}
             onLoad={setMap}
             options={{
               styles: mapStyles,
